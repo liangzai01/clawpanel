@@ -54,7 +54,8 @@
   --text-tertiary: #71717a;
   --text-inverse: #0a0a0f;
 
-  --accent-hover: #818cf8;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
   --accent-muted: rgba(99, 102, 241, 0.15);
 
   --success: #22c55e;

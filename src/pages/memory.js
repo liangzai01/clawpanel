@@ -3,6 +3,7 @@
  */
 import { api } from '../lib/tauri-api.js'
 import { toast } from '../components/toast.js'
+import { showModal } from '../components/modal.js'
 
 const CATEGORIES = [
   { key: 'memory', label: '工作记忆' },
@@ -23,7 +24,13 @@ export async function render() {
       ${CATEGORIES.map((c, i) => `<div class="tab${i === 0 ? ' active' : ''}" data-tab="${c.key}">${c.label}</div>`).join('')}
     </div>
     <div class="memory-layout">
-      <div class="memory-sidebar" id="file-tree">加载中...</div>
+      <div class="memory-sidebar">
+        <div style="padding:0 var(--space-sm) var(--space-sm);display:flex;gap:4px">
+          <button class="btn btn-sm btn-secondary" id="btn-new-file" style="flex:1">+ 新建</button>
+          <button class="btn btn-sm btn-danger" id="btn-del-file" disabled style="flex:1">删除</button>
+        </div>
+        <div id="file-tree">加载中...</div>
+      </div>
       <div class="memory-editor">
         <div class="editor-toolbar">
           <span id="current-file" style="font-size:var(--font-size-sm);color:var(--text-tertiary)">选择文件查看</span>
@@ -53,6 +60,43 @@ export async function render() {
 
   // 保存
   page.querySelector('#btn-save-file').onclick = () => saveFile(page, state)
+
+  // 预览（简易 Markdown 渲染）
+  page.querySelector('#btn-preview').onclick = () => togglePreview(page, state)
+
+  // 新建文件
+  page.querySelector('#btn-new-file').onclick = () => {
+    showModal({
+      title: '新建记忆文件',
+      fields: [{ name: 'filename', label: '文件名', placeholder: '如 notes.md' }],
+      onConfirm: async ({ filename }) => {
+        if (!filename) return
+        try {
+          await api.writeMemoryFile(filename, `# ${filename}\n\n`)
+          toast(`已创建 ${filename}`, 'success')
+          loadFiles(page, state)
+        } catch (e) {
+          toast('创建失败: ' + e, 'error')
+        }
+      },
+    })
+  }
+
+  // 删除文件
+  page.querySelector('#btn-del-file').onclick = async () => {
+    if (!state.currentPath) return
+    const name = state.currentPath.split('/').pop()
+    if (!confirm(`确定删除 ${name}？`)) return
+    try {
+      await api.deleteMemoryFile(state.currentPath)
+      toast(`已删除 ${name}`, 'success')
+      state.currentPath = null
+      resetEditor(page)
+      loadFiles(page, state)
+    } catch (e) {
+      toast('删除失败: ' + e, 'error')
+    }
+  }
 
   loadFiles(page, state)
   return page
@@ -97,10 +141,17 @@ async function loadFileContent(page, state) {
   const label = page.querySelector('#current-file')
   const btnSave = page.querySelector('#btn-save-file')
   const btnPreview = page.querySelector('#btn-preview')
+  const btnDel = page.querySelector('#btn-del-file')
 
   editor.disabled = true
   editor.value = '加载中...'
   label.textContent = state.currentPath
+
+  // 退出预览模式
+  editor.style.display = ''
+  const previewEl = page.querySelector('#md-preview')
+  if (previewEl) previewEl.remove()
+  btnPreview.textContent = '预览'
 
   try {
     const content = await api.readMemoryFile(state.currentPath)
@@ -108,6 +159,7 @@ async function loadFileContent(page, state) {
     editor.disabled = false
     btnSave.disabled = false
     btnPreview.disabled = false
+    btnDel.disabled = false
   } catch (e) {
     editor.value = '读取失败: ' + e
     toast('读取文件失败: ' + e, 'error')
@@ -118,9 +170,14 @@ function resetEditor(page) {
   const editor = page.querySelector('#file-editor')
   editor.value = ''
   editor.disabled = true
+  editor.style.display = ''
+  const previewEl = page.querySelector('#md-preview')
+  if (previewEl) previewEl.remove()
   page.querySelector('#current-file').textContent = '选择文件查看'
   page.querySelector('#btn-save-file').disabled = true
   page.querySelector('#btn-preview').disabled = true
+  page.querySelector('#btn-preview').textContent = '预览'
+  page.querySelector('#btn-del-file').disabled = true
 }
 
 async function saveFile(page, state) {
@@ -132,4 +189,42 @@ async function saveFile(page, state) {
   } catch (e) {
     toast('保存失败: ' + e, 'error')
   }
+}
+
+function togglePreview(page) {
+  const editor = page.querySelector('#file-editor')
+  const btn = page.querySelector('#btn-preview')
+  let previewEl = page.querySelector('#md-preview')
+
+  if (previewEl) {
+    // 退出预览
+    previewEl.remove()
+    editor.style.display = ''
+    btn.textContent = '预览'
+  } else {
+    // 进入预览
+    const md = editor.value
+    previewEl = document.createElement('div')
+    previewEl.id = 'md-preview'
+    previewEl.style.cssText = 'flex:1;padding:var(--space-lg);overflow-y:auto;line-height:1.8;color:var(--text-primary)'
+    previewEl.innerHTML = renderMarkdown(md)
+    editor.style.display = 'none'
+    editor.parentElement.appendChild(previewEl)
+    btn.textContent = '编辑'
+  }
+}
+
+// 简易 Markdown 渲染
+function renderMarkdown(md) {
+  return md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.+)$/gm, '<h3 style="font-size:var(--font-size-lg);font-weight:600;margin:16px 0 8px">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 style="font-size:var(--font-size-xl);font-weight:600;margin:20px 0 8px">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 style="font-size:var(--font-size-2xl);font-weight:700;margin:24px 0 12px">$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code style="background:var(--bg-tertiary);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:var(--font-size-xs)">$1</code>')
+    .replace(/^- (.+)$/gm, '<li style="margin-left:20px">$1</li>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>')
 }

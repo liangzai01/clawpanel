@@ -84,6 +84,9 @@ function mockInvoke(cmd, args) {
     },
     read_memory_file: ({ path }) => `# ${path}\n\n这是 ${path} 的内容示例。\n\n## 概述\n\n在此记录工作记忆...`,
     write_memory_file: () => true,
+    delete_memory_file: () => true,
+    check_installation: () => ({ installed: true, path: '/usr/local/bin/openclaw', version: '2026.2.23' }),
+    get_deploy_config: () => ({ gatewayUrl: 'http://127.0.0.1:18789', authToken: '', version: '2026.2.23' }),
     read_mcp_config: () => ({
       mcpServers: {
         'exa': { command: 'npx', args: ['-y', '@anthropic/exa-mcp-server'], env: { EXA_API_KEY: '***' } },
@@ -124,6 +127,7 @@ export const api = {
   listMemoryFiles: (category) => invoke('list_memory_files', { category }),
   readMemoryFile: (path) => invoke('read_memory_file', { path }),
   writeMemoryFile: (path, content) => invoke('write_memory_file', { path, content }),
+  deleteMemoryFile: (path) => invoke('delete_memory_file', { path }),
 
   // 安装/部署
   checkInstallation: () => invoke('check_installation'),

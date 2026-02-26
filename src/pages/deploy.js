@@ -84,7 +84,7 @@ function renderDeployUI(page, el, envContent, gwUrl, token) {
     <div class="config-section">
       <div class="config-section-title">写入路径</div>
       <div class="form-group">
-        <input class="form-input" id="env-path" value="" placeholder="输入 ClawApp 项目 .env 文件路径">
+        <input class="form-input" id="env-path" value="~/Desktop/clawapp/.env" placeholder="输入 ClawApp 项目 .env 文件路径">
       </div>
     </div>
   `

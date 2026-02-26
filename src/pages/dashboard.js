@@ -105,16 +105,27 @@ function renderLogs(page, logs) {
 }
 
 function bindActions(page) {
-  page.querySelector('#btn-restart-gw')?.addEventListener('click', async () => {
+  const btnRestart = page.querySelector('#btn-restart-gw')
+  const btnUpdate = page.querySelector('#btn-check-update')
+
+  btnRestart?.addEventListener('click', async () => {
+    btnRestart.disabled = true
+    btnRestart.textContent = '重启中...'
     try {
       await api.restartService('ai.openclaw.gateway')
       toast('Gateway 已重启', 'success')
+      setTimeout(() => loadDashboardData(page), 500)
     } catch (e) {
       toast('重启失败: ' + e, 'error')
+    } finally {
+      btnRestart.disabled = false
+      btnRestart.textContent = '重启 Gateway'
     }
   })
 
-  page.querySelector('#btn-check-update')?.addEventListener('click', async () => {
+  btnUpdate?.addEventListener('click', async () => {
+    btnUpdate.disabled = true
+    btnUpdate.textContent = '检查中...'
     try {
       const info = await api.getVersionInfo()
       if (info.update_available) {
@@ -124,6 +135,9 @@ function bindActions(page) {
       }
     } catch (e) {
       toast('检查更新失败: ' + e, 'error')
+    } finally {
+      btnUpdate.disabled = false
+      btnUpdate.textContent = '检查更新'
     }
   })
 }

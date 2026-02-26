@@ -110,3 +110,25 @@ pub fn write_memory_file(path: String, content: String) -> Result<(), String> {
     fs::write(&target, &content)
         .map_err(|e| format!("写入失败: {e}"))
 }
+
+#[tauri::command]
+pub fn delete_memory_file(path: String) -> Result<(), String> {
+    if path.contains("..") {
+        return Err("非法路径".to_string());
+    }
+
+    let candidates = [
+        memory_dir("memory").join(&path),
+        memory_dir("archive").join(&path),
+        memory_dir("core").join(&path),
+    ];
+
+    for candidate in &candidates {
+        if candidate.exists() {
+            return fs::remove_file(candidate)
+                .map_err(|e| format!("删除失败: {e}"));
+        }
+    }
+
+    Err(format!("文件不存在: {path}"))
+}

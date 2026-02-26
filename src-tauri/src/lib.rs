@@ -13,6 +13,8 @@ pub fn run() {
             config::read_mcp_config,
             config::write_mcp_config,
             config::get_version_info,
+            config::check_installation,
+            config::write_env_file,
             // 服务
             service::get_services_status,
             service::start_service,
@@ -25,6 +27,7 @@ pub fn run() {
             memory::list_memory_files,
             memory::read_memory_file,
             memory::write_memory_file,
+            memory::delete_memory_file,
         ])
         .run(tauri::generate_context!())
         .expect("启动 ClawPanel 失败");

@@ -70,3 +70,29 @@ pub fn get_version_info() -> Result<VersionInfo, String> {
         update_available: false,
     })
 }
+
+#[tauri::command]
+pub fn check_installation() -> Result<Value, String> {
+    let openclaw_dir = openclaw_dir();
+    let installed = openclaw_dir.join("openclaw.json").exists();
+    let mut result = serde_json::Map::new();
+    result.insert("installed".into(), Value::Bool(installed));
+    result.insert("path".into(), Value::String(openclaw_dir.to_string_lossy().to_string()));
+    Ok(Value::Object(result))
+}
+
+#[tauri::command]
+pub fn write_env_file(path: String, config: String) -> Result<(), String> {
+    let expanded = if path.starts_with("~/") {
+        dirs::home_dir()
+            .unwrap_or_default()
+            .join(&path[2..])
+    } else {
+        PathBuf::from(&path)
+    };
+    if let Some(parent) = expanded.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&expanded, &config)
+        .map_err(|e| format!("写入 .env 失败: {e}"))
+}

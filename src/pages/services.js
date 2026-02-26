@@ -63,7 +63,7 @@ function renderServices(page, services) {
         else if (action === 'stop') await api.stopService(label)
         else if (action === 'restart') await api.restartService(label)
         toast(`${label} ${action} 成功`, 'success')
-        loadServices(page)
+        setTimeout(() => loadServices(page), 300)
       } catch (e) {
         toast(`操作失败: ${e}`, 'error')
         btn.disabled = false

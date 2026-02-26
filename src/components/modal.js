@@ -46,6 +46,17 @@ export function showModal({ title, fields, onConfirm }) {
     onConfirm(result)
   }
 
+  // 键盘事件：Enter 确认，Escape 关闭
+  const handleKey = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      overlay.querySelector('[data-action="confirm"]')?.click()
+    } else if (e.key === 'Escape') {
+      overlay.remove()
+    }
+  }
+  overlay.addEventListener('keydown', handleKey)
+
   // 自动聚焦第一个输入框
   const firstInput = overlay.querySelector('input, select')
   if (firstInput) firstInput.focus()
