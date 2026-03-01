@@ -49,6 +49,8 @@ jobs:
       # 签出代码
       - name: 签出代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 安装 Node.js 22
       - name: 安装 Node.js
@@ -96,6 +98,66 @@ jobs:
             echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
           fi
 
+      # 生成 Release Body（下载引导 + 动态 changelog）
+      - name: 生成 Release Body
+        id: release_body
+        shell: bash
+        run: |
+          VERSION="${TAG_NAME#v}"
+
+          # 获取上一个 tag，用于生成 changelog
+          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v' | sed -n '2p' || echo "")
+
+          # 动态生成 changelog
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges | head -30)
+            CHANGELOG_HEADER="自 ${PREV_TAG} 以来的更新"
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -20)
+            CHANGELOG_HEADER="主要更新"
+          fi
+
+          # 写入 Release Body
+          cat > release_body.md << ENDOFBODY
+          ## 下载安装
+
+          根据你的操作系统选择对应安装包：
+
+          ### macOS
+          | 芯片 | 安装包 | 说明 |
+          |------|--------|------|
+          | Apple Silicon (M1/M2/M3/M4) | \`ClawPanel_${VERSION}_aarch64.dmg\` | 2020 年末及之后的 Mac |
+          | Intel | \`ClawPanel_${VERSION}_x64.dmg\` | 2020 年及之前的 Mac |
+
+          > 不确定芯片类型？点击左上角  → 关于本机，查看「芯片」一栏。
+
+          ### Windows
+          | 格式 | 安装包 | 说明 |
+          |------|--------|------|
+          | EXE 安装器 | \`ClawPanel_${VERSION}_x64-setup.exe\` | 推荐，双击安装 |
+          | MSI 安装器 | \`ClawPanel_${VERSION}_x64_en-US.msi\` | 企业部署 / 静默安装 |
+
+          ### Linux
+          | 格式 | 安装包 | 说明 |
+          |------|--------|------|
+          | AppImage | \`ClawPanel_${VERSION}_amd64.AppImage\` | 免安装，\`chmod +x\` 后直接运行 |
+          | DEB | \`ClawPanel_${VERSION}_amd64.deb\` | Debian / Ubuntu：\`sudo dpkg -i *.deb\` |
+          | RPM | \`ClawPanel-${VERSION}-1.x86_64.rpm\` | Fedora / RHEL：\`sudo rpm -i *.rpm\` |
+
+          ---
+
+          ## ${CHANGELOG_HEADER}
+
+          ${CHANGELOG}
+
+          ---
+
+          完整更新日志请查看 [CHANGELOG.md](https://github.com/qingchencloud/clawpanel/blob/main/CHANGELOG.md)
+          ENDOFBODY
+
+          # 去除 heredoc 缩进
+          sed -i.bak 's/^          //' release_body.md && rm -f release_body.md.bak
+
       # 使用 tauri-action 构建并发布
       - name: 构建 Tauri 应用
         uses: tauri-apps/tauri-action@v0
@@ -104,7 +166,20 @@ jobs:
         with:
           tagName: ${{ env.TAG_NAME }}
           releaseName: "ClawPanel ${{ env.TAG_NAME }}"
-          releaseBody: "详细变更记录请查看提交历史。"
+          releaseBody: "构建中，稍后更新..."
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.platform.args }}
+
+      # 更新 Release Body（仅第一个完成的 job 执行）
+      - name: 更新 Release 描述
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 检查当前 Release body 是否为空或默认值，避免重复更新
+          CURRENT_BODY=$(gh release view "$TAG_NAME" --json body -q '.body' 2>/dev/null || echo "")
+          if [ ${#CURRENT_BODY} -lt 100 ]; then
+            gh release edit "$TAG_NAME" --notes-file release_body.md
+          fi
