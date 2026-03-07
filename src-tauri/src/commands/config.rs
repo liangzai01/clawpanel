@@ -591,12 +591,23 @@ pub async fn upgrade_openclaw(app: tauri::AppHandle, source: String) -> Result<S
     let _ = app.emit("upgrade-progress", 100);
 
     if !status.success() {
-        let code = status.code().map(|c| c.to_string()).unwrap_or("unknown".into());
+        let code = status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or("unknown".into());
         let _ = app.emit("upgrade-log", format!("❌ 升级失败 (exit code: {code})"));
         // 把 stderr 最后 15 行带进错误消息，确保前端诊断函数能匹配到
         // npm 内部错误码（如 -4058 ENOENT、EPERM 等）
-        let tail = stderr_lines.lock().unwrap()
-            .iter().rev().take(15).rev().cloned().collect::<Vec<_>>().join("\n");
+        let tail = stderr_lines
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .take(15)
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
         return Err(format!("升级失败，exit code: {code}\n{tail}"));
     }
 

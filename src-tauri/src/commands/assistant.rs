@@ -390,18 +390,18 @@ pub async fn assistant_web_search(
         r#"class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)</a>"#
     ).unwrap();
 
+    let re_strip_tags = regex::Regex::new(r"<[^>]+>").unwrap();
+
     for cap in re_result.captures_iter(&html) {
         if results.len() >= max {
             break;
         }
         let raw_url = &cap[1];
-        let title = regex::Regex::new(r"<[^>]+>")
-            .unwrap()
+        let title = re_strip_tags
             .replace_all(&cap[2], "")
             .trim()
             .to_string();
-        let snippet = regex::Regex::new(r"<[^>]+>")
-            .unwrap()
+        let snippet = re_strip_tags
             .replace_all(&cap[3], "")
             .trim()
             .to_string();
