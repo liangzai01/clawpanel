@@ -85,10 +85,7 @@ function renderSkills(el, data) {
 
     ${missing.length ? `
     <div class="clawhub-panel" style="margin-bottom:var(--space-lg)">
-      <div class="clawhub-panel-title" style="color:var(--warning);display:flex;align-items:center;gap:var(--space-sm)">
-        <span>✗ 缺少依赖 (${missing.length})</span>
-        <button class="btn btn-secondary btn-sm" data-action="skill-ai-fix" style="font-size:var(--font-size-xs);padding:2px 8px">让 AI 助手帮我安装</button>
-      </div>
+      <div class="clawhub-panel-title" style="color:var(--warning)">✗ 缺少依赖 (${missing.length})</div>
       <div class="clawhub-list skills-scroll-area skills-installed-scroll" id="skills-missing">
         ${missing.map(s => renderSkillCard(s, 'missing')).join('')}
       </div>
@@ -325,15 +322,6 @@ function bindEvents(page) {
         break
       case 'clawhub-install':
         await handleClawHubInstall(page, btn)
-        break
-      case 'skill-ai-fix':
-        // 跳转到 AI 助手并触发 Skills 管理快捷操作
-        window.location.hash = '#/assistant'
-        // 延迟触发内置 skill（等路由加载完）
-        setTimeout(() => {
-          const skillBtn = document.querySelector('.ast-skill-card[data-skill="skills-manager"]')
-          if (skillBtn) skillBtn.click()
-        }, 500)
         break
     }
   })

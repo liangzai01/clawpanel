@@ -20,8 +20,6 @@ import './style/pages.css'
 import './style/chat.css'
 import './style/agents.css'
 import './style/debug.css'
-import './style/assistant.css'
-import './style/ai-drawer.css'
 
 // 初始化主题
 initTheme()
@@ -209,6 +207,7 @@ window.__clawpanel_show_login = async function() {
 
 const sidebar = document.getElementById('sidebar')
 const content = document.getElementById('content')
+const VISIBLE_ROUTES = new Set(['/setup', '/chat-debug'])
 
 async function boot() {
   // 先注册所有路由，立即渲染 UI（不等后端检测）
@@ -225,9 +224,14 @@ async function boot() {
   registerRoute('/skills', () => import('./pages/skills.js'))
   registerRoute('/security', () => import('./pages/security.js'))
   registerRoute('/about', () => import('./pages/about.js'))
-  registerRoute('/assistant', () => import('./pages/assistant.js'))
   registerRoute('/setup', () => import('./pages/setup.js'))
   registerRoute('/docker', () => import('./pages/docker.js'))
+
+  setDefaultRoute('/setup')
+  const currentHash = window.location.hash.slice(1)
+  if (currentHash && !VISIBLE_ROUTES.has(currentHash)) {
+    navigate('/setup')
+  }
 
   renderSidebar(sidebar)
   initRouter(content)
@@ -286,7 +290,8 @@ async function boot() {
       setDefaultRoute('/setup')
       navigate('/setup')
     } else {
-      if (window.location.hash === '#/setup') navigate('/dashboard')
+      setDefaultRoute('/chat-debug')
+      if (!window.location.hash || window.location.hash === '#/setup') navigate('/chat-debug')
       setupGatewayBanner()
       startGatewayPoll()
 
@@ -607,66 +612,4 @@ function startUpdateChecker() {
   if (!auth.ok) await showLoginOverlay(auth.defaultPw)
   boot()
   startUpdateChecker()
-
-  // 初始化全局 AI 助手浮动按钮（延迟加载，不阻塞启动）
-  setTimeout(async () => {
-    const { initAIFab, registerPageContext, openAIDrawerWithError } = await import('./components/ai-drawer.js')
-    initAIFab()
-
-    // 注册各页面上下文提供器
-    registerPageContext('/chat-debug', async () => {
-      const { isOpenclawReady, isGatewayRunning } = await import('./lib/app-state.js')
-      const { wsClient } = await import('./lib/ws-client.js')
-      const { api } = await import('./lib/tauri-api.js')
-      const lines = ['## 系统诊断快照']
-      lines.push(`- OpenClaw: ${isOpenclawReady() ? '就绪' : '未就绪'}`)
-      lines.push(`- Gateway: ${isGatewayRunning() ? '运行中' : '未运行'}`)
-      lines.push(`- WebSocket: ${wsClient.connected ? '已连接' : '未连接'}`)
-      try {
-        const node = await api.checkNode()
-        lines.push(`- Node.js: ${node?.version || '未知'}`)
-      } catch {}
-      try {
-        const ver = await api.getVersionInfo()
-        lines.push(`- 版本: ${ver?.current || '?'} → ${ver?.latest || '?'}`)
-      } catch {}
-      return { detail: lines.join('\n') }
-    })
-
-    registerPageContext('/services', async () => {
-      const { isGatewayRunning } = await import('./lib/app-state.js')
-      const { api } = await import('./lib/tauri-api.js')
-      const lines = ['## 服务状态']
-      lines.push(`- Gateway: ${isGatewayRunning() ? '运行中' : '未运行'}`)
-      try {
-        const svc = await api.getServicesStatus()
-        if (svc?.[0]) {
-          lines.push(`- CLI: ${svc[0].cli_installed ? '已安装' : '未安装'}`)
-          lines.push(`- PID: ${svc[0].pid || '无'}`)
-        }
-      } catch {}
-      return { detail: lines.join('\n') }
-    })
-
-    registerPageContext('/gateway', async () => {
-      const { api } = await import('./lib/tauri-api.js')
-      try {
-        const config = await api.readOpenclawConfig()
-        const gw = config?.gateway || {}
-        const lines = ['## Gateway 配置']
-        lines.push(`- 端口: ${gw.port || 18789}`)
-        lines.push(`- 模式: ${gw.mode || 'local'}`)
-        lines.push(`- Token: ${gw.auth?.token ? '已设置' : '未设置'}`)
-        if (gw.controlUi?.allowedOrigins) lines.push(`- Origins: ${JSON.stringify(gw.controlUi.allowedOrigins)}`)
-        return { detail: lines.join('\n') }
-      } catch { return null }
-    })
-
-    registerPageContext('/setup', () => {
-      return { detail: '用户正在进行 OpenClaw 初始安装，请帮助检查 Node.js 环境和网络状况' }
-    })
-
-    // 挂到全局，供安装/升级失败时调用
-    window.__openAIDrawerWithError = openAIDrawerWithError
-  }, 500)
 })()

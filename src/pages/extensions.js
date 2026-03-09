@@ -317,14 +317,6 @@ async function handleInstallCftunnel(page) {
     progressText.innerHTML = `${statusIcon('err', 14)} 安装失败`
     logBox.textContent += '\n错误: ' + e
     toast('安装失败: ' + e, 'error')
-    if (window.__openAIDrawerWithError) {
-      window.__openAIDrawerWithError({
-        title: '安装 cftunnel 失败',
-        error: logBox.textContent,
-        scene: '安装 cftunnel 内网穿透工具',
-        hint: String(e),
-      })
-    }
   } finally {
     unlistenLog?.()
     unlistenProgress?.()
@@ -382,14 +374,6 @@ async function handleInstallClawapp(page) {
     progressText.innerHTML = `${statusIcon('err', 14)} 安装失败`
     logBox.textContent += '\n错误: ' + e
     toast('安装失败: ' + e, 'error')
-    if (window.__openAIDrawerWithError) {
-      window.__openAIDrawerWithError({
-        title: '安装 ClawApp 失败',
-        error: logBox.textContent,
-        scene: '安装 ClawApp 手机客户端',
-        hint: String(e),
-      })
-    }
   } finally {
     unlistenLog?.()
     unlistenProgress?.()

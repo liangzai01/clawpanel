@@ -14,7 +14,6 @@ const NO_MOCK_CMDS = new Set([
   'write_memory_file', 'delete_memory_file',
   'set_npm_registry', 'reload_gateway', 'restart_gateway',
   'auto_pair_device',
-  'assistant_exec', 'assistant_write_file',
   'docker_create_container', 'docker_start_container', 'docker_stop_container',
   'docker_restart_container', 'docker_remove_container', 'docker_container_exec', 'docker_gateway_chat', 'docker_pull_image',
   'docker_add_node', 'docker_remove_node',
@@ -280,21 +279,6 @@ function mockInvoke(cmd, args) {
     cftunnel_action: () => true,
     get_cftunnel_logs: () => '2026-02-26 13:29:01 [INFO] Tunnel started\n2026-02-26 13:30:00 [INFO] Connection healthy',
     get_clawapp_status: () => ({ running: true, pid: 7752, port: 3210, url: 'http://localhost:3210' }),
-    // AI 助手工具
-    assistant_exec: ({ command }) => `[mock] 执行: ${command}\n这是模拟输出`,
-    assistant_read_file: ({ path }) => `[mock] 文件内容: ${path}\n# 示例文件\n这是模拟文件内容`,
-    assistant_write_file: ({ path, content }) => `已写入 ${path} (${content.length} 字节)`,
-    assistant_list_dir: ({ path }) => '[DIR]  src/\n[DIR]  docs/\n[FILE] README.md (1024 bytes)\n[FILE] package.json (512 bytes)',
-    assistant_system_info: () => `OS: ${navigator.platform.includes('Win') ? 'windows' : navigator.platform.includes('Mac') ? 'macos' : 'linux'}\nArch: x86_64\nHome: ${navigator.platform.includes('Win') ? 'C:\\Users\\user' : '/Users/user'}\nHostname: mock-host\nShell: ${navigator.platform.includes('Win') ? 'powershell / cmd' : 'zsh'}\nPath separator: ${navigator.platform.includes('Win') ? '\\\\' : '/'}`,
-    assistant_list_processes: ({ filter }) => filter ? `Id ProcessName\n-- -----------\n1234 ${filter}\n5678 ${filter}-helper` : 'Id ProcessName\n-- -----------\n1 System\n1234 node\n5678 openclaw',
-    assistant_check_port: ({ port }) => port === 18789 ? `端口 ${port} 已被占用（正在监听）\n占用进程: node` : `端口 ${port} 未被占用（空闲）`,
-    assistant_web_search: ({ query }) => `搜索「${query}」找到 3 条结果：\n\n1. **${query} - 文档**\n   https://example.com/docs\n   这是关于 ${query} 的文档页面\n\n2. **${query} 常见问题**\n   https://example.com/faq\n   常见问题解答\n\n3. **${query} GitHub**\n   https://github.com/example\n   开源仓库`,
-    assistant_fetch_url: ({ url }) => `# ${url}\n\n这是从 ${url} 抓取的网页内容（mock）。\n\n## 主要内容\n\n示例文本...`,
-    // 数据目录 & 图片存储
-    assistant_ensure_data_dir: () => (navigator.platform.includes('Win') ? 'C:\\Users\\user\\.openclaw\\clawpanel' : '/Users/user/.openclaw/clawpanel'),
-    assistant_save_image: ({ id }) => `/mock/images/${id}.jpg`,
-    assistant_load_image: () => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAAlwSFlzAAAWJQAAFiUBSVIk8AAAAA0lEQVQI12P4z8BQDwAEgAF/QualzQAAAABJRU5ErkJggg==',
-    assistant_delete_image: () => null,
   }
   const fn = mocks[cmd]
   return fn ? Promise.resolve(fn(args)) : Promise.reject(`未知命令: ${cmd}`)
@@ -382,17 +366,6 @@ export const api = {
   autoPairDevice: () => invoke('auto_pair_device'),
   checkPairingStatus: () => invoke('check_pairing_status'),
 
-  // AI 助手工具
-  assistantExec: (command, cwd) => invoke('assistant_exec', { command, cwd: cwd || null }),
-  assistantReadFile: (path) => invoke('assistant_read_file', { path }),
-  assistantWriteFile: (path, content) => invoke('assistant_write_file', { path, content }),
-  assistantListDir: (path) => invoke('assistant_list_dir', { path }),
-  assistantSystemInfo: () => invoke('assistant_system_info'),
-  assistantListProcesses: (filter) => invoke('assistant_list_processes', { filter: filter || null }),
-  assistantCheckPort: (port) => invoke('assistant_check_port', { port }),
-  assistantWebSearch: (query, maxResults) => invoke('assistant_web_search', { query, max_results: maxResults || 5 }),
-  assistantFetchUrl: (url) => invoke('assistant_fetch_url', { url }),
-
   // Skills 管理（openclaw skills CLI）
   skillsList: () => invoke('skills_list'),
   skillsInfo: (name) => invoke('skills_info', { name }),
@@ -436,10 +409,4 @@ export const api = {
   downloadFrontendUpdate: (url, expectedHash) => invoke('download_frontend_update', { url, expectedHash: expectedHash || '' }),
   rollbackFrontendUpdate: () => invoke('rollback_frontend_update'),
   getUpdateStatus: () => invoke('get_update_status'),
-
-  // 数据目录 & 图片存储
-  ensureDataDir: () => invoke('assistant_ensure_data_dir'),
-  saveImage: (id, data) => invoke('assistant_save_image', { id, data }),
-  loadImage: (id) => invoke('assistant_load_image', { id }),
-  deleteImage: (id) => invoke('assistant_delete_image', { id }),
 }

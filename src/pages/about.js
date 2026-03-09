@@ -17,7 +17,7 @@ export async function render() {
       <img src="/images/logo-brand.png" alt="ClawPanel" style="height:48px;width:auto">
       <div>
         <h1 class="page-title" style="margin:0">ClawPanel</h1>
-        <p class="page-desc" style="margin:0">OpenClaw 可视化管理面板 · <a href="https://claw.qt.cool" target="_blank" rel="noopener" style="color:var(--primary)">claw.qt.cool</a></p>
+        <p class="page-desc" style="margin:0">OpenClaw 可视化管理面板</p>
       </div>
     </div>
     <div class="stat-cards" id="version-cards">
@@ -25,33 +25,9 @@ export async function render() {
       <div class="stat-card loading-placeholder"></div>
       <div class="stat-card loading-placeholder"></div>
     </div>
-    <div class="config-section">
-      <div class="config-section-title">社群交流</div>
-      <div id="community-section"></div>
-    </div>
-    <div class="config-section">
-      <div class="config-section-title">相关项目</div>
-      <div id="projects-list"></div>
-    </div>
-    <div class="config-section">
-      <div class="config-section-title">参与贡献</div>
-      <div id="contribute-section"></div>
-    </div>
-    <div class="config-section">
-      <div class="config-section-title">快捷链接</div>
-      <div id="links-list"></div>
-    </div>
-    <div class="config-section" style="color:var(--text-tertiary);font-size:var(--font-size-xs)">
-      <p>ClawPanel 基于 Tauri v2 构建，前端 Vanilla JS + Vite，后端 Rust。</p>
-      <p style="margin-top:8px">MIT License &copy; 2026 qingchencloud</p>
-    </div>
-  `
+    `
 
   loadData(page)
-  renderCommunity(page)
-  renderProjects(page)
-  renderContribute(page)
-  renderLinks(page)
   return page
 }
 
@@ -336,14 +312,6 @@ async function doInstall(page, title, source, version) {
     if (diagnosis.hint) modal.appendLog('')
     if (diagnosis.hint) modal.appendHtmlLog(`${statusIcon('info', 14)} ${diagnosis.hint}`)
     if (diagnosis.command) modal.appendHtmlLog(`${icon('clipboard', 14)} ${diagnosis.command}`)
-    if (window.__openAIDrawerWithError) {
-      window.__openAIDrawerWithError({
-        title: diagnosis.title,
-        error: fullLog,
-        scene: title,
-        hint: diagnosis.hint,
-      })
-    }
   } finally {
     setUpgrading(false)
     unlistenLog?.()
@@ -430,38 +398,6 @@ function compareVersions(a, b) {
   return 0
 }
 
-function renderCommunity(page) {
-  const el = page.querySelector('#community-section')
-  el.innerHTML = `
-    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
-      <div style="text-align:center">
-        <img src="/images/OpenClaw-QQ.png" alt="QQ 交流群" style="width:140px;height:140px;border-radius:var(--radius-md);border:1px solid var(--border-primary)">
-        <div style="font-size:var(--font-size-sm);margin-top:8px;color:var(--text-secondary)">QQ 交流群</div>
-      </div>
-      <div style="text-align:center">
-        <img src="/images/OpenClawWx.png" alt="微信交流群" style="width:140px;height:140px;border-radius:var(--radius-md);border:1px solid var(--border-primary)">
-        <div style="font-size:var(--font-size-sm);margin-top:8px;color:var(--text-secondary)">微信交流群</div>
-      </div>
-      <div style="text-align:center">
-        <img src="https://qt.cool/c/OpenClawDY/qr.png" alt="抖音交流群" style="width:140px;height:140px;border-radius:var(--radius-md);border:1px solid var(--border-primary);object-fit:contain;background:#fff">
-        <div style="font-size:var(--font-size-sm);margin-top:8px;color:var(--text-secondary)">抖音交流群</div>
-      </div>
-      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;padding-top:4px">
-        <div style="font-size:var(--font-size-sm);color:var(--text-secondary)">扫码或点击链接加入交流群，反馈问题、获取帮助</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-          <a class="btn btn-primary btn-sm" href="https://qt.cool/c/OpenClaw" target="_blank" rel="noopener">加入 QQ 群</a>
-          <a class="btn btn-primary btn-sm" href="https://qt.cool/c/OpenClawWx" target="_blank" rel="noopener">加入微信群</a>
-          <a class="btn btn-primary btn-sm" href="https://qt.cool/c/OpenClawDY" target="_blank" rel="noopener">加入抖音群</a>
-          <a class="btn btn-secondary btn-sm" href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb" target="_blank" rel="noopener">元宝派社群</a>
-        </div>
-        <div style="font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:8px">
-          2000 人大群，满员自动切换 · 碰到问题可直接在群内反馈
-        </div>
-      </div>
-    </div>
-  `
-}
-
 const PROJECTS = [
   {
     name: 'OpenClaw',
@@ -509,10 +445,7 @@ function renderProjects(page) {
 
 const LINKS = [
   { label: 'Claw 项目官网', url: 'https://claw.qt.cool', primary: true },
-  { label: 'cftunnel 官网', url: 'https://cftunnel.qt.cool' },
-  { label: 'cftunnel 桌面客户端', url: 'https://github.com/qingchencloud/cftunnel-app/releases' },
   { label: 'OpenClaw 中文翻译', url: 'https://github.com/1186258278/OpenClawChineseTranslation' },
-  { label: 'ClawApp 文档', url: 'https://github.com/qingchencloud/clawapp#readme' },
 ]
 
 function renderContribute(page) {

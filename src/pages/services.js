@@ -452,14 +452,6 @@ async function doUpgradeWithModal(source, page) {
     if (diagnosis.hint) modal.appendLog('')
     if (diagnosis.hint) modal.appendHtmlLog(`${statusIcon('info', 14)} ${diagnosis.hint}`)
     if (diagnosis.command) modal.appendHtmlLog(`${icon('clipboard', 14)} ${diagnosis.command}`)
-    if (window.__openAIDrawerWithError) {
-      window.__openAIDrawerWithError({
-        title: diagnosis.title,
-        error: fullLog,
-        scene: '升级 OpenClaw',
-        hint: diagnosis.hint,
-      })
-    }
   } finally {
     setUpgrading(false)
     unlistenLog?.()

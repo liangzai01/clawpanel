@@ -4,7 +4,7 @@ mod tray;
 mod utils;
 
 use commands::{
-    agent, assistant, config, device, extensions, logs, memory, pairing, service, skills, update,
+    agent, config, device, extensions, logs, memory, pairing, service, skills, update,
 };
 
 pub fn run() {
@@ -124,21 +124,6 @@ pub fn run() {
             agent::update_agent_identity,
             agent::update_agent_model,
             agent::backup_agent,
-            // AI 助手工具
-            assistant::assistant_exec,
-            assistant::assistant_read_file,
-            assistant::assistant_write_file,
-            assistant::assistant_list_dir,
-            assistant::assistant_system_info,
-            assistant::assistant_list_processes,
-            assistant::assistant_check_port,
-            assistant::assistant_web_search,
-            assistant::assistant_fetch_url,
-            // 数据目录 & 图片存储
-            assistant::assistant_ensure_data_dir,
-            assistant::assistant_save_image,
-            assistant::assistant_load_image,
-            assistant::assistant_delete_image,
             // Skills 管理（openclaw skills CLI）
             skills::skills_list,
             skills::skills_info,

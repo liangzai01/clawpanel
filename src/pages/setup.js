@@ -150,29 +150,6 @@ function renderSteps(page, { node, cliOk, config }) {
     </div>
   `
 
-  // AI 助手入口
-  html += `
-    <div class="config-section" style="text-align:left;margin-top:var(--space-md)">
-      <div class="config-section-title" style="display:flex;align-items:center;gap:6px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-        晴辰助手
-      </div>
-      <p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-sm);line-height:1.5">
-        遇到安装问题？AI 助手可以帮你诊断和解决。配置好模型后，点击下方按钮${!allOk ? '，当前问题会自动发送给 AI 分析' : ''}。
-      </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-secondary btn-sm" id="btn-goto-assistant">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="margin-right:4px"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-          打开 AI 助手
-        </button>
-        ${!allOk ? `<button class="btn btn-primary btn-sm" id="btn-ask-ai-help">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="margin-right:4px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          让 AI 帮我解决
-        </button>` : ''}
-      </div>
-    </div>
-  `
-
   // 全部就绪 → 进入面板
   if (allOk) {
     html += `
@@ -183,7 +160,7 @@ function renderSteps(page, { node, cliOk, config }) {
   }
 
   stepsEl.innerHTML = html
-  bindEvents(page, nodeOk, { node, cliOk, config })
+  bindEvents(page, nodeOk)
 }
 
 function renderInstallSection() {
@@ -275,40 +252,10 @@ function renderInstallSection() {
   `
 }
 
-function buildSetupProblemPrompt({ node, cliOk, config }) {
-  const problems = []
-  if (!node.installed) problems.push('- Node.js 未安装或未检测到')
-  else problems.push(`- Node.js 已安装: ${node.version || '版本未知'}`)
-  if (!cliOk) problems.push('- OpenClaw CLI 未安装')
-  else problems.push('- OpenClaw CLI 已安装')
-  if (!config.installed) problems.push('- 配置文件不存在')
-  else problems.push(`- 配置文件正常: ${config.path || ''}`)
-
-  return `我在安装 OpenClaw 时遇到问题，以下是当前检测状态：
-
-${problems.join('\n')}
-
-请帮我分析问题并给出解决步骤。如果需要，请使用工具帮我检查系统环境。`
-}
-
-function bindEvents(page, nodeOk, detectState) {
-  // 打开 AI 助手
-  page.querySelector('#btn-goto-assistant')?.addEventListener('click', () => {
-    window.location.hash = '/assistant'
-  })
-
-  // 让 AI 帮我解决（带问题上下文）
-  page.querySelector('#btn-ask-ai-help')?.addEventListener('click', () => {
-    if (detectState) {
-      const prompt = buildSetupProblemPrompt(detectState)
-      sessionStorage.setItem('assistant-auto-prompt', prompt)
-    }
-    window.location.hash = '/assistant'
-  })
-
+function bindEvents(page, nodeOk) {
   // 进入面板
   page.querySelector('#btn-enter')?.addEventListener('click', () => {
-    window.location.hash = '/dashboard'
+    window.location.hash = '/chat-debug'
   })
 
   // 一键初始化配置
@@ -470,14 +417,6 @@ function bindEvents(page, nodeOk, detectState) {
       if (diagnosis.hint) modal.appendLog('')
       if (diagnosis.hint) modal.appendHtmlLog(`${statusIcon('info', 14)} ${diagnosis.hint}`)
       if (diagnosis.command) modal.appendHtmlLog(`${icon('clipboard', 14)} ${diagnosis.command}`)
-      if (window.__openAIDrawerWithError) {
-        window.__openAIDrawerWithError({
-          title: diagnosis.title,
-          error: fullLog,
-          scene: '初始安装 OpenClaw',
-          hint: diagnosis.hint,
-        })
-      }
     } finally {
       setUpgrading(false)
       unlistenLog?.()
@@ -485,4 +424,3 @@ function bindEvents(page, nodeOk, detectState) {
     }
   })
 }
-

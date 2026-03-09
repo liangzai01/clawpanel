@@ -12,7 +12,6 @@ const NAV_ITEMS_FULL = [
     section: '概览',
     items: [
       { route: '/dashboard', label: '仪表盘', icon: 'dashboard' },
-      { route: '/assistant', label: 'AI 助手', icon: 'assistant' },
       { route: '/chat', label: '实时聊天', icon: 'chat' },
       { route: '/services', label: '服务管理', icon: 'services' },
       { route: '/logs', label: '日志查看', icon: 'logs' },
@@ -36,14 +35,7 @@ const NAV_ITEMS_FULL = [
   {
     section: '扩展',
     items: [
-      { route: '/extensions', label: '扩展工具', icon: 'extensions' },
       { route: '/skills', label: 'Skills', icon: 'skills' },
-    ]
-  },
-  {
-    section: '龙虾军团',
-    items: [
-      { route: '/docker', label: '龙虾军团', icon: 'docker' },
     ]
   },
   {
@@ -60,20 +52,8 @@ const NAV_ITEMS_SETUP = [
     section: '',
     items: [
       { route: '/setup', label: '初始设置', icon: 'setup' },
-      { route: '/assistant', label: 'AI 助手', icon: 'assistant' },
-    ]
-  },
-  {
-    section: '',
-    items: [
-      { route: '/extensions', label: '扩展工具', icon: 'extensions' },
-    ]
-  },
-  {
-    section: '',
-    items: [
+      // { route: '/extensions', label: '扩展工具', icon: 'extensions' },
       { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
-      { route: '/about', label: '关于', icon: 'about' },
     ]
   }
 ]
@@ -165,10 +145,6 @@ export function renderSidebar(el) {
       <div class="nav-item" id="btn-theme-toggle">
         ${isDark ? sunIcon : moonIcon}
         <span>${isDark ? '日间模式' : '夜间模式'}</span>
-      </div>
-      <div class="sidebar-meta">
-        <a href="https://claw.qt.cool" target="_blank" rel="noopener" class="sidebar-link">claw.qt.cool</a>
-        <span class="sidebar-version">v${APP_VERSION}</span>
       </div>
     </div>
   `

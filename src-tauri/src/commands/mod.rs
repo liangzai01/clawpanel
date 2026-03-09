@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 pub mod agent;
-pub mod assistant;
 pub mod config;
 pub mod device;
 pub mod extensions;
