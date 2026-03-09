@@ -4,45 +4,16 @@
  */
 import { api } from '../lib/tauri-api.js'
 import { toast } from '../components/toast.js'
-import { showModal, showConfirm } from '../components/modal.js'
+import { showConfirm } from '../components/modal.js'
 import { icon, statusIcon } from '../lib/icons.js'
+import {
+  PROVIDER_PRESETS, MODEL_PRESETS, API_TYPES, INPUT_MODALITIES,
+  PROVIDER_CATEGORIES, QUICK_PROVIDERS,
+  getAvailablePresets, normalizeModel,
+} from '../lib/model-presets.js'
 
-// API 接口类型选项
-const API_TYPES = [
-  { value: 'openai-completions', label: 'OpenAI 兼容 (最常用)' },
-  { value: 'anthropic-messages', label: 'Anthropic 原生' },
-  { value: 'openai-responses', label: 'OpenAI Responses' },
-  { value: 'google-gemini', label: 'Google Gemini' },
-]
-
-// 服务商快捷预设
-const PROVIDER_PRESETS = [
-  { key: 'openai', label: 'OpenAI 官方', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions' },
-  { key: 'anthropic', label: 'Anthropic 官方', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages' },
-  { key: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', api: 'openai-completions' },
-  { key: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', api: 'google-gemini' },
-]
-
-// 常用模型预设（按服务商分组）
-const MODEL_PRESETS = {
-  openai: [
-    { id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000 },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000 },
-    { id: 'o3-mini', name: 'o3 Mini', contextWindow: 200000, reasoning: true },
-  ],
-  anthropic: [
-    { id: 'claude-sonnet-4-5-20250514', name: 'Claude Sonnet 4.5', contextWindow: 200000 },
-    { id: 'claude-haiku-3-5-20241022', name: 'Claude Haiku 3.5', contextWindow: 200000 },
-  ],
-  deepseek: [
-    { id: 'deepseek-chat', name: 'DeepSeek V3', contextWindow: 64000 },
-    { id: 'deepseek-reasoner', name: 'DeepSeek R1', contextWindow: 64000, reasoning: true },
-  ],
-  google: [
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1000000, reasoning: true },
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 1000000 },
-  ],
-}
+// 重新导出，供配置向导等组件复用（消除对 model-presets.js 的间接依赖）
+export { PROVIDER_PRESETS, MODEL_PRESETS }
 
 export async function render() {
   const page = document.createElement('div')
@@ -698,44 +669,69 @@ function bindTopActions(page, state) {
   page.querySelector('#btn-undo').onclick = () => undo(page, state)
 }
 
-// 添加服务商（带预设快捷选择）
+// 添加服务商（4 快捷 + 全量下拉 + 手动填写 + 模型选择）
 function addProvider(page, state) {
-  // 构建预设按钮 HTML
-  const presetsHtml = PROVIDER_PRESETS.map(p =>
-    `<button class="btn btn-sm btn-secondary preset-btn" data-preset="${p.key}" style="margin:0 6px 6px 0">${p.label}</button>`
-  ).join('')
+  // 4 快捷按钮：3 常用 + 1 自定义
+  const quickBtns = QUICK_PROVIDERS.map(key => {
+    const p = PROVIDER_PRESETS.find(x => x.key === key)
+    return `<button class="btn btn-sm btn-secondary provider-quick-btn" data-preset="${key}" style="min-width:80px">${p?.label || key}</button>`
+  }).join('') + `<button class="btn btn-sm btn-secondary provider-quick-btn" data-preset="__custom__" style="min-width:80px">自定义</button>`
+
+  // 全量下拉（按分类 optgroup，末尾含自定义）
+  const selectOptions = PROVIDER_CATEGORIES.map(cat => {
+    const items = PROVIDER_PRESETS.filter(p => p.category === cat.key)
+    if (!items.length) return ''
+    return `<optgroup label="${cat.label}">
+      ${items.map(p => `<option value="${p.key}">${p.label}${p.selfHost ? ' ⚙' : ''}</option>`).join('')}
+    </optgroup>`
+  }).join('') + `<optgroup label="其他"><option value="__custom__">自定义服务商（手动配置）</option></optgroup>`
 
   const overlay = document.createElement('div')
   overlay.className = 'modal-overlay'
   overlay.innerHTML = `
-    <div class="modal">
+    <div class="modal" style="max-height:90vh;overflow-y:auto">
       <div class="modal-title">添加服务商</div>
       <div class="form-group">
         <label class="form-label">快捷选择</label>
-        <div style="display:flex;flex-wrap:wrap">${presetsHtml}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${quickBtns}</div>
+        <select class="form-input" id="provider-select">
+          <option value="">— 从全部服务商中选择 —</option>
+          ${selectOptions}
+        </select>
         <div class="form-hint">选择常用服务商自动填充，或手动填写下方信息</div>
       </div>
       <div class="form-group">
-        <label class="form-label">服务商名称</label>
-        <input class="form-input" data-name="key" placeholder="如 openai, newapi">
-        <div class="form-hint">自定义标识名，用于区分不同来源</div>
+        <label class="form-label">服务商名称 <span style="color:var(--error)">*</span></label>
+        <input class="form-input" data-name="key" placeholder="如 openai、my-proxy">
+        <div class="form-hint">唯一标识名（英文/数字/连字符），用于区分不同来源</div>
       </div>
       <div class="form-group">
-        <label class="form-label">接口地址</label>
+        <label class="form-label">API Base URL</label>
         <input class="form-input" data-name="baseUrl" placeholder="https://api.openai.com/v1">
         <div class="form-hint">模型服务的 API 地址，通常以 /v1 结尾</div>
       </div>
       <div class="form-group">
-        <label class="form-label">密钥 (API Key)</label>
-        <input class="form-input" data-name="apiKey" placeholder="sk-...">
-        <div class="form-hint">访问服务所需的密钥，留空表示无需认证</div>
+        <label class="form-label">API 密钥提供方式</label>
+        <select class="form-input" id="provider-key-mode">
+          <option value="paste">直接粘贴 API 密钥</option>
+          <option value="env">使用环境变量</option>
+          <option value="skip">跳过（无需密钥，如本地模型）</option>
+        </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">接口类型</label>
+      <div id="provider-key-field">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="provider-apikey-input" type="password" placeholder="sk-...">
+          <div class="form-hint">访问服务所需的密钥，留空表示无需认证</div>
+        </div>
+      </div>
+      <div id="provider-models-section" style="border-top:1px solid var(--border-primary);padding-top:var(--space-md);margin-top:var(--space-sm)"></div>
+      <div class="form-group" style="border-top:1px solid var(--border-primary);padding-top:var(--space-md);margin-top:var(--space-sm)">
+        <label class="form-label">Endpoint compatibility（接口协议）</label>
         <select class="form-input" data-name="api">
           ${API_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
         </select>
-        <div class="form-hint">大多数中转站选「OpenAI 兼容」即可</div>
+        <div class="form-hint">大多数服务商（含中转站）选「OpenAI 兼容」即可</div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary btn-sm" data-action="cancel">取消</button>
@@ -746,89 +742,293 @@ function addProvider(page, state) {
 
   document.body.appendChild(overlay)
 
-  // 预设按钮点击自动填充
-  overlay.querySelectorAll('.preset-btn').forEach(btn => {
+  // ── 密钥输入区域 ──────────────────────────────────────────────────────────
+  function renderKeyField(mode, keyLink) {
+    const fieldEl = overlay.querySelector('#provider-key-field')
+    if (mode === 'paste') {
+      fieldEl.innerHTML = `
+        <div class="form-group">
+          <label class="form-label" style="display:flex;justify-content:space-between">
+            <span>API Key</span>
+            ${keyLink ? `<a href="${keyLink}" target="_blank" style="font-size:var(--font-size-xs);color:var(--primary)">前往获取 →</a>` : ''}
+          </label>
+          <input class="form-input" id="provider-apikey-input" type="password" placeholder="sk-...">
+          <div class="form-hint">访问服务所需的密钥，留空表示无需认证</div>
+        </div>`
+    } else if (mode === 'env') {
+      fieldEl.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">环境变量名</label>
+          <input class="form-input" id="provider-apikey-input" placeholder="OPENAI_API_KEY">
+          <div class="form-hint">OpenClaw 运行时从该环境变量读取密钥（存储为 <code>\${变量名}</code>）</div>
+        </div>`
+    } else {
+      fieldEl.innerHTML = `<div class="form-hint" style="padding:6px 0 10px;color:var(--text-tertiary)">无需 API 密钥（适用于本地模型如 Ollama）</div>`
+    }
+  }
+
+  overlay.querySelector('#provider-key-mode').addEventListener('change', e => {
+    renderKeyField(e.target.value, null)
+  })
+
+  // ── 模型区域：预设 checkbox 列表 or 自定义 tag 输入 ───────────────────────
+  function renderModelsSection(presetKey) {
+    const section = overlay.querySelector('#provider-models-section')
+    const isCustom = !presetKey || presetKey === '__custom__'
+    const presets  = isCustom ? [] : (MODEL_PRESETS[presetKey] || [])
+
+    if (isCustom) {
+      // 自定义：单个 Model ID 文本输入
+      section.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Model ID</label>
+          <input class="form-input" id="ap-model-input" placeholder="例：llama3.2 或 gpt-4o-mini">
+          <div class="form-hint">填写该服务商的模型标识符，添加后可继续追加其他模型</div>
+        </div>`
+
+    } else if (presets.length) {
+      // 预设：展开列表单选（size 属性让所有选项可见，避免折叠态被误认为只有一项）
+      const listSize = Math.min(presets.length, 7)
+      const fmtCtx = (w) => {
+        if (!w) return ''
+        const k = Math.round(w / 1000)
+        return k >= 1000 ? ` (${(k / 1000).toFixed(1)}M)` : ` (${k}K)`
+      }
+      section.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Model ID</label>
+          <select class="form-input" id="ap-model-select" size="${listSize}" style="height:auto;padding:4px 0;overflow-y:auto">
+            ${presets.map(m => `<option value="${m.id}">${m.id}${m.name !== m.id ? ' — ' + m.name : ''}${fmtCtx(m.contextWindow)}${m.reasoning ? ' [推理]' : ''}</option>`).join('')}
+          </select>
+          <div class="form-hint">选择一个模型添加，其余可在服务商详情中继续添加</div>
+        </div>`
+
+    } else {
+      // 无预设（非自定义）
+      section.innerHTML = `<div class="form-hint" style="color:var(--text-tertiary)">该服务商暂无内置模型预设，添加后可在服务商列表点击「+ 模型」手动添加</div>`
+    }
+  }
+
+  // ── 预设填充 ──────────────────────────────────────────────────────────────
+  function applyPreset(key) {
+    const isCustom = !key || key === '__custom__'
+    const preset = isCustom ? null : PROVIDER_PRESETS.find(p => p.key === key)
+
+    overlay.querySelector('[data-name="key"]').value     = preset?.key     || ''
+    overlay.querySelector('[data-name="baseUrl"]').value  = preset?.baseUrl || ''
+    overlay.querySelector('[data-name="api"]').value     = preset?.api     || 'openai-completions'
+
+    const keyMode = overlay.querySelector('#provider-key-mode')
+    keyMode.value = 'paste'
+    renderKeyField('paste', preset?.keyUrl || null)
+    renderModelsSection(key)
+
+    overlay.querySelectorAll('.provider-quick-btn').forEach(b => b.style.outline = '')
+    const activeBtn = overlay.querySelector(`.provider-quick-btn[data-preset="${key}"]`)
+    if (activeBtn) activeBtn.style.outline = '2px solid var(--primary)'
+  }
+
+  // 初始渲染模型区域（空状态提示）
+  overlay.querySelector('#provider-models-section').innerHTML =
+    `<div class="form-hint" style="color:var(--text-tertiary)">请先选择服务商，以显示可用模型</div>`
+
+  // 快捷按钮
+  overlay.querySelectorAll('.provider-quick-btn').forEach(btn => {
     btn.onclick = () => {
-      const preset = PROVIDER_PRESETS.find(p => p.key === btn.dataset.preset)
-      if (!preset) return
-      overlay.querySelector('[data-name="key"]').value = preset.key
-      overlay.querySelector('[data-name="baseUrl"]').value = preset.baseUrl
-      overlay.querySelector('[data-name="api"]').value = preset.api
-      // 高亮选中的预设
-      overlay.querySelectorAll('.preset-btn').forEach(b => b.style.opacity = '0.5')
-      btn.style.opacity = '1'
+      const k = btn.dataset.preset
+      applyPreset(k)
+      overlay.querySelector('#provider-select').value = k
     }
   })
+
+  // 下拉选择
+  overlay.querySelector('#provider-select').onchange = (e) => {
+    applyPreset(e.target.value)
+  }
 
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
   overlay.querySelector('[data-action="cancel"]').onclick = () => overlay.remove()
 
   overlay.querySelector('[data-action="confirm"]').onclick = () => {
-    const key = overlay.querySelector('[data-name="key"]').value.trim()
+    const key     = overlay.querySelector('[data-name="key"]').value.trim()
     const baseUrl = overlay.querySelector('[data-name="baseUrl"]').value.trim()
-    const apiKey = overlay.querySelector('[data-name="apiKey"]').value.trim()
     const apiType = overlay.querySelector('[data-name="api"]').value
+    const keyMode = overlay.querySelector('#provider-key-mode').value
+    const rawKey  = overlay.querySelector('#provider-apikey-input')?.value.trim() || ''
+
+    let apiKey = ''
+    if (keyMode === 'paste') apiKey = rawKey
+    else if (keyMode === 'env' && rawKey) apiKey = `\${${rawKey}}`
+
     if (!key) { toast('请填写服务商名称', 'warning'); return }
+
+    // 收集选中的模型
+    const currentPresetKey = overlay.querySelector('#provider-select').value
+    const isCustom = !currentPresetKey || currentPresetKey === '__custom__'
+    let models = []
+
+    if (isCustom) {
+      const modelId = overlay.querySelector('#ap-model-input')?.value.trim()
+      if (modelId) models = [{ id: modelId, name: modelId, input: ['text', 'image'] }]
+    } else {
+      const allPresets = MODEL_PRESETS[currentPresetKey] || []
+      const selected = overlay.querySelector('#ap-model-select')?.value
+      if (selected) {
+        const m = allPresets.find(p => p.id === selected)
+        if (m) models = [{ ...m, input: ['text', 'image'] }]
+      }
+    }
+
     pushUndo(state)
     if (!state.config.models) state.config.models = { mode: 'replace', providers: {} }
     if (!state.config.models.providers) state.config.models.providers = {}
-    state.config.models.providers[key] = {
-      baseUrl: baseUrl || '',
-      apiKey: apiKey || '',
-      api: apiType,
-      models: [],
+    state.config.models.providers[key] = { baseUrl: baseUrl || '', apiKey, api: apiType, models }
+
+    // 无主模型时自动设第一个
+    const primary = state.config?.agents?.defaults?.model?.primary
+    if (!primary && models.length) {
+      if (!state.config.agents) state.config.agents = {}
+      if (!state.config.agents.defaults) state.config.agents.defaults = {}
+      if (!state.config.agents.defaults.model) state.config.agents.defaults.model = {}
+      state.config.agents.defaults.model.primary = `${key}/${models[0].id}`
     }
+
     overlay.remove()
     renderProviders(page, state)
+    renderDefaultBar(page, state)
     updateUndoBtn(page, state)
     autoSave(state)
-    toast(`已添加服务商: ${key}`, 'success')
+    toast(`已添加服务商: ${key}（${models.length} 个模型）`, 'success')
   }
 
   overlay.querySelector('[data-name="key"]')?.focus()
 }
 
+// 模型 ID 标签 HTML（供 addProvider 使用）
+function _modelTagHtml(id) {
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')
+  return `
+    <span class="ap-model-tag" style="
+      display:inline-flex;align-items:center;gap:4px;
+      padding:3px 8px;border-radius:var(--radius-sm);
+      background:var(--accent-muted,rgba(99,102,241,0.1));
+      border:1px solid var(--primary,#6366f1);
+      font-size:var(--font-size-xs);font-family:var(--font-mono);color:var(--primary,#6366f1)
+    ">
+      ${esc(id)}
+      <button class="ap-model-tag-rm" data-id="${esc(id)}" type="button" style="
+        background:none;border:none;cursor:pointer;padding:0;line-height:1;
+        color:inherit;opacity:0.6;font-size:12px
+      ">✕</button>
+    </span>`
+}
+
 // 编辑服务商
 function editProvider(page, state, providerKey) {
   const p = state.config.models.providers[providerKey]
-  showModal({
-    title: `编辑服务商: ${providerKey}`,
-    fields: [
-      { name: 'baseUrl', label: '接口地址', value: p.baseUrl || '', hint: '模型服务的 API 地址，通常以 /v1 结尾' },
-      { name: 'apiKey', label: '密钥 (API Key)', value: p.apiKey || '', hint: '修改后自动保存生效' },
-      {
-        name: 'api', label: '接口类型', type: 'select', value: p.api || 'openai-completions',
-        options: API_TYPES,
-        hint: '大多数中转站选「OpenAI 兼容」即可',
-      },
-    ],
-    onConfirm: ({ baseUrl, apiKey, api: apiType }) => {
-      pushUndo(state)
-      p.baseUrl = baseUrl
-      p.apiKey = apiKey
-      p.api = apiType
-      renderProviders(page, state)
-      updateUndoBtn(page, state)
-      autoSave(state)
-      toast('服务商已更新', 'success')
-    },
-  })
+
+  // 推断当前密钥提供模式
+  const existKey = p.apiKey || ''
+  const isEnv = /^\$\{.+}$/.test(existKey)
+  const initMode = isEnv ? 'env' : (existKey ? 'paste' : 'skip')
+  const initKeyVal = isEnv ? existKey.slice(2, -1) : existKey // 剥除 ${...}
+
+  const overlay = document.createElement('div')
+  overlay.className = 'modal-overlay'
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">编辑服务商: ${providerKey}</div>
+      <div class="form-group">
+        <label class="form-label">API Base URL</label>
+        <input class="form-input" data-name="baseUrl" value="${p.baseUrl || ''}" placeholder="https://...">
+        <div class="form-hint">模型服务的 API 地址，通常以 /v1 结尾</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Endpoint compatibility（接口协议）</label>
+        <select class="form-input" data-name="api">
+          ${API_TYPES.map(t => `<option value="${t.value}" ${(p.api || 'openai-completions') === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">API 密钥提供方式</label>
+        <select class="form-input" id="ep-key-mode">
+          <option value="paste" ${initMode === 'paste' ? 'selected' : ''}>直接粘贴 API 密钥</option>
+          <option value="env"   ${initMode === 'env'   ? 'selected' : ''}>使用环境变量</option>
+          <option value="skip"  ${initMode === 'skip'  ? 'selected' : ''}>跳过（无需密钥，如本地模型）</option>
+        </select>
+      </div>
+      <div id="ep-key-field"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-sm" data-action="cancel">取消</button>
+        <button class="btn btn-primary btn-sm" data-action="confirm">保存</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(overlay)
+
+  function renderKeyField(mode) {
+    const fieldEl = overlay.querySelector('#ep-key-field')
+    if (mode === 'paste') {
+      fieldEl.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="ep-apikey-input" type="password" placeholder="sk-..." value="${mode === initMode ? initKeyVal : ''}">
+          <div class="form-hint">修改后自动保存生效</div>
+        </div>`
+    } else if (mode === 'env') {
+      fieldEl.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">环境变量名</label>
+          <input class="form-input" id="ep-apikey-input" placeholder="OPENAI_API_KEY" value="${mode === initMode ? initKeyVal : ''}">
+          <div class="form-hint">OpenClaw 运行时从该环境变量读取密钥（存储为 <code>\${变量名}</code>）</div>
+        </div>`
+    } else {
+      fieldEl.innerHTML = `<div class="form-hint" style="padding:6px 0 10px;color:var(--text-tertiary)">无需 API 密钥（适用于本地模型如 Ollama）</div>`
+    }
+  }
+
+  renderKeyField(initMode)
+  overlay.querySelector('#ep-key-mode').addEventListener('change', e => renderKeyField(e.target.value))
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+  overlay.querySelector('[data-action="cancel"]').onclick = () => overlay.remove()
+
+  overlay.querySelector('[data-action="confirm"]').onclick = () => {
+    const baseUrl = overlay.querySelector('[data-name="baseUrl"]').value.trim()
+    const apiType = overlay.querySelector('[data-name="api"]').value
+    const keyMode = overlay.querySelector('#ep-key-mode').value
+    const rawVal  = overlay.querySelector('#ep-apikey-input')?.value.trim() || ''
+
+    let apiKey = ''
+    if (keyMode === 'paste') apiKey = rawVal
+    else if (keyMode === 'env' && rawVal) apiKey = `\${${rawVal}}`
+
+    pushUndo(state)
+    p.baseUrl = baseUrl
+    p.apiKey  = apiKey
+    p.api     = apiType
+    overlay.remove()
+    renderProviders(page, state)
+    updateUndoBtn(page, state)
+    autoSave(state)
+    toast('服务商已更新', 'success')
+  }
 }
 
 // 添加模型（带预设快捷选择）
 function addModel(page, state, providerKey) {
-  const presets = MODEL_PRESETS[providerKey] || []
   const existingIds = (state.config.models.providers[providerKey].models || [])
     .map(m => typeof m === 'string' ? m : m.id)
 
   // 过滤掉已添加的模型
-  const available = presets.filter(p => !existingIds.includes(p.id))
+  const available = getAvailablePresets(providerKey, existingIds)
 
   const fields = [
-    { name: 'id', label: '模型 ID', placeholder: '如 gpt-4o', hint: '必须与服务商支持的模型名一致' },
-    { name: 'name', label: '显示名称（选填）', placeholder: '如 GPT-4o', hint: '方便识别的友好名称' },
-    { name: 'contextWindow', label: '上下文长度（选填）', placeholder: '如 128000', hint: '模型支持的最大 Token 数' },
-    { name: 'reasoning', label: '这是推理模型（如 o3、R1、QwQ 等）', type: 'checkbox', value: false, hint: '推理模型会使用特殊的调用方式' },
+    { name: 'id',            label: '模型 ID',             placeholder: '如 gpt-4o',  hint: '必须与服务商 API 返回的模型名一致' },
+    { name: 'name',          label: '显示名称（选填）',      placeholder: '如 GPT-4o',  hint: '方便识别的友好名称，留空则与 ID 相同' },
+    { name: 'contextWindow', label: '上下文长度（选填）',    placeholder: '如 128000',  hint: '模型支持的最大 Token 数' },
+    { name: 'reasoning',     label: '推理模型（如 o3、R1、QwQ 等）', type: 'checkbox', value: false, hint: '推理模型使用特殊调用方式，流式输出有差异' },
+    { name: 'input',         label: '支持的输入模态',        type: 'checkboxes', options: INPUT_MODALITIES, value: ['text', 'image'], hint: '决定是否可以发送图片给该模型' },
   ]
 
   if (available.length) {
@@ -887,18 +1087,27 @@ function addModel(page, state, providerKey) {
       }
     })
   } else {
-    // 无预设，直接弹普通 modal
-    showModal({
-      title: `添加模型到 ${providerKey}`,
-      fields,
-      onConfirm: (vals) => {
-        pushUndo(state)
-        doAddModel(state, providerKey, vals)
-        renderProviders(page, state)
-        renderDefaultBar(page, state)
-        updateUndoBtn(page, state)
-        autoSave(state)
-      },
+    // 无预设，同样使用自定义弹窗（保持一致性）
+    const overlay = document.createElement('div')
+    overlay.className = 'modal-overlay'
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-title">添加模型到 ${providerKey}</div>
+        ${buildFieldsHtml(fields)}
+        <div class="modal-actions">
+          <button class="btn btn-secondary btn-sm" data-action="cancel">取消</button>
+          <button class="btn btn-primary btn-sm" data-action="confirm">确定</button>
+        </div>
+      </div>
+    `
+    document.body.appendChild(overlay)
+    bindModalEvents(overlay, fields, (vals) => {
+      pushUndo(state)
+      doAddModel(state, providerKey, vals)
+      renderProviders(page, state)
+      renderDefaultBar(page, state)
+      updateUndoBtn(page, state)
+      autoSave(state)
     })
   }
 }
@@ -913,6 +1122,23 @@ function buildFieldsHtml(fields) {
             <input type="checkbox" data-name="${f.name}" ${f.value ? 'checked' : ''}>
             <span class="form-label" style="margin:0">${f.label}</span>
           </label>
+          ${f.hint ? `<div class="form-hint">${f.hint}</div>` : ''}
+        </div>`
+    }
+    if (f.type === 'checkboxes') {
+      // 多选组：每个 option 共用同一 data-name，通过 data-val 区分值
+      return `
+        <div class="form-group">
+          <label class="form-label">${f.label}</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            ${(f.options || []).map(o => `
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--font-size-sm)">
+                <input type="checkbox" data-name="${f.name}" data-val="${o.value}"
+                  ${(f.value || []).includes(o.value) ? 'checked' : ''}>
+                ${o.label}
+              </label>
+            `).join('')}
+          </div>
           ${f.hint ? `<div class="form-hint">${f.hint}</div>` : ''}
         </div>`
     }
@@ -932,51 +1158,61 @@ function bindModalEvents(overlay, fields, onConfirm) {
   overlay.querySelector('[data-action="confirm"]').onclick = () => {
     const result = {}
     overlay.querySelectorAll('[data-name]').forEach(el => {
-      result[el.dataset.name] = el.type === 'checkbox' ? el.checked : el.value
+      if (el.dataset.val !== undefined) {
+        // checkboxes 多选组：收集选中项到数组
+        if (!result[el.dataset.name]) result[el.dataset.name] = []
+        if (el.checked) result[el.dataset.name].push(el.dataset.val)
+      } else {
+        result[el.dataset.name] = el.type === 'checkbox' ? el.checked : el.value
+      }
     })
     overlay.remove()
     onConfirm(result)
   }
 }
 
-// 实际添加模型到 state
+// 实际添加模型到 state（字段与 OpenClaw schema 一致）
 function doAddModel(state, providerKey, vals) {
   if (!vals.id) { toast('请填写模型 ID', 'warning'); return }
-  const model = {
-    id: vals.id.trim(),
-    name: vals.name?.trim() || vals.id.trim(),
-    reasoning: !!vals.reasoning,
-    input: ['text', 'image'],
-  }
-  if (vals.contextWindow) model.contextWindow = parseInt(vals.contextWindow) || 0
+  const model = normalizeModel(vals)
   state.config.models.providers[providerKey].models.push(model)
   toast(`已添加模型: ${model.name}`, 'success')
 }
 
-// 编辑模型
+// 编辑模型（自定义弹窗，支持全部 OpenClaw 字段）
 function editModel(page, state, providerKey, idx) {
   const m = state.config.models.providers[providerKey].models[idx]
-  showModal({
-    title: `编辑模型: ${m.id}`,
-    fields: [
-      { name: 'id', label: '模型 ID', value: m.id || '', hint: '必须与服务商支持的模型名一致' },
-      { name: 'name', label: '显示名称', value: m.name || '', hint: '方便识别的友好名称' },
-      { name: 'contextWindow', label: '上下文长度', value: String(m.contextWindow || ''), hint: '模型支持的最大 Token 数' },
-      { name: 'reasoning', label: '这是推理模型', type: 'checkbox', value: !!m.reasoning, hint: '推理模型会使用特殊的调用方式' },
-    ],
-    onConfirm: (vals) => {
-      if (!vals.id) return
-      pushUndo(state)
-      m.id = vals.id.trim()
-      m.name = vals.name?.trim() || vals.id.trim()
-      m.reasoning = !!vals.reasoning
-      if (vals.contextWindow) m.contextWindow = parseInt(vals.contextWindow) || 0
-      renderProviders(page, state)
-      renderDefaultBar(page, state)
-      updateUndoBtn(page, state)
-      autoSave(state)
-      toast('模型已更新', 'success')
-    },
+  const fields = [
+    { name: 'id',            label: '模型 ID',         value: m.id || '',                 hint: '必须与服务商 API 返回的模型名一致' },
+    { name: 'name',          label: '显示名称',          value: m.name || '',               hint: '方便识别的友好名称，留空则与 ID 相同' },
+    { name: 'contextWindow', label: '上下文长度',        value: String(m.contextWindow || ''), hint: '模型支持的最大 Token 数' },
+    { name: 'reasoning',     label: '推理模型',          type: 'checkbox', value: !!m.reasoning, hint: '推理模型使用特殊调用方式，流式输出有差异' },
+    { name: 'input',         label: '支持的输入模态',    type: 'checkboxes', options: INPUT_MODALITIES,
+      value: Array.isArray(m.input) ? m.input : ['text', 'image'], hint: '决定是否可以发送图片给该模型' },
+  ]
+
+  const overlay = document.createElement('div')
+  overlay.className = 'modal-overlay'
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">编辑模型: ${m.id}</div>
+      ${buildFieldsHtml(fields)}
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-sm" data-action="cancel">取消</button>
+        <button class="btn btn-primary btn-sm" data-action="confirm">保存</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(overlay)
+  bindModalEvents(overlay, fields, (vals) => {
+    if (!vals.id) return
+    pushUndo(state)
+    Object.assign(m, normalizeModel({ ...m, ...vals }))
+    renderProviders(page, state)
+    renderDefaultBar(page, state)
+    updateUndoBtn(page, state)
+    autoSave(state)
+    toast('模型已更新', 'success')
   })
 }
 

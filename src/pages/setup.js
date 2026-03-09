@@ -8,6 +8,7 @@ import { toast } from '../components/toast.js'
 import { setUpgrading, isMacPlatform } from '../lib/app-state.js'
 import { diagnoseInstallError } from '../lib/error-diagnosis.js'
 import { icon, statusIcon } from '../lib/icons.js'
+import { navigate } from '../router.js'
 
 export async function render() {
   const page = document.createElement('div')
@@ -404,7 +405,21 @@ function bindEvents(page, nodeOk) {
       }
 
       toast('OpenClaw 安装成功', 'success')
-      setTimeout(() => window.location.reload(), 1500)
+      // 安装日志弹窗关闭后，引导用户配置模型
+      modal.onClose(async () => {
+        const { showConfirm } = await import('../components/modal.js')
+        const yes = await showConfirm('安装成功！是否现在配置 AI 模型接口？\n\n配置后即可开始使用对话功能。')
+        if (yes) {
+          navigate('/models')
+          // 延迟等页面渲染完成后打开向导
+          setTimeout(async () => {
+            const { openConfigWizard } = await import('../components/config-wizard.js')
+            openConfigWizard(() => {})
+          }, 300)
+        } else {
+          navigate('/dashboard')
+        }
+      })
     } catch (e) {
       const errStr = String(e)
       modal.appendLog(errStr)

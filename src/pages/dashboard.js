@@ -25,11 +25,13 @@ export async function render() {
       <div class="stat-card loading-placeholder"></div>
       <div class="stat-card loading-placeholder"></div>
     </div>
+    <div id="no-model-banner"></div>
     <div id="dashboard-overview-container"></div>
     <div class="quick-actions">
       <button class="btn btn-secondary" id="btn-restart-gw">重启 Gateway</button>
       <button class="btn btn-secondary" id="btn-check-update">检查更新</button>
       <button class="btn btn-secondary" id="btn-create-backup">创建备份</button>
+      <button class="btn btn-primary" id="btn-config-wizard">配置向导</button>
     </div>
     <div class="config-section">
       <div class="config-section-title">最近日志</div>
@@ -170,6 +172,30 @@ function renderStatCards(page, services, version, agents, config, tunnel) {
       <div class="stat-card-meta">存活率 ${services.length ? Math.round(runningCount / services.length * 100) : 0}%</div>
     </div>
   `
+
+  // 无模型时展示引导 banner
+  const bannerEl = page.querySelector('#no-model-banner')
+  if (bannerEl) {
+    bannerEl.innerHTML = modelCount === 0 ? `
+      <div style="margin-bottom:var(--space-lg);padding:16px 20px;border-radius:var(--radius-md);
+                  background:var(--warning-muted,#fef3c7);border:1px solid var(--warning,#d97706);
+                  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:600;color:var(--warning,#d97706);margin-bottom:2px">尚未配置 AI 模型</div>
+          <div style="font-size:var(--font-size-sm);color:var(--text-secondary)">
+            需要至少配置一个模型才能使用对话功能
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-banner-wizard">立即配置</button>
+      </div>
+    ` : ''
+
+    if (modelCount === 0) {
+      bannerEl.querySelector('#btn-banner-wizard')?.addEventListener('click', () => {
+        _openWizard(page)
+      })
+    }
+  }
 }
 
 function renderOverview(page, services, clawapp, tunnel, mcpConfig, backups, config, agents) {
@@ -302,6 +328,7 @@ function bindActions(page) {
   const btnRestart = page.querySelector('#btn-restart-gw')
   const btnUpdate = page.querySelector('#btn-check-update')
   const btnCreateBackup = page.querySelector('#btn-create-backup')
+  const btnWizard = page.querySelector('#btn-config-wizard')
 
   // 概览区域的 Gateway 启动/停止/重启 + ClawApp 导航
   page.addEventListener('click', async (e) => {
@@ -411,6 +438,16 @@ function bindActions(page) {
       btnCreateBackup.disabled = false
       btnCreateBackup.textContent = '创建备份'
     }
+  })
+
+  btnWizard?.addEventListener('click', () => _openWizard(page))
+}
+
+// 打开配置向导（懒加载，避免循环依赖）
+async function _openWizard(page) {
+  const { openConfigWizard } = await import('../components/config-wizard.js')
+  openConfigWizard((added) => {
+    if (added) loadDashboardData(page)
   })
 }
 

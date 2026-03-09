@@ -272,6 +272,7 @@ mark {
   justify-content: center;
   z-index: 9000;
   animation: fadeInModal 150ms ease;
+  min-width: 400px;
 }
 
 .modal {
