@@ -151,6 +151,29 @@
   background: rgba(6,182,212,.1);
   color: #06b6d4;
 }
+.instance-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 6px 10px 4px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-secondary);
+  margin-bottom: 2px;
+}
+.instance-port {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.instance-active-tag {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(99,102,241,.12);
+  color: var(--accent);
+  font-weight: 500;
+  flex-shrink: 0;
+}
 .instance-divider {
   height: 1px;
   background: var(--border-secondary);

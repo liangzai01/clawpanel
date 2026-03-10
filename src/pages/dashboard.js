@@ -67,9 +67,7 @@ async function loadDashboardData(page) {
   ])
   const secondaryP = Promise.allSettled([
     api.listAgents(),
-    api.getCftunnelStatus(),
     api.readMcpConfig(),
-    api.getClawappStatus(),
     api.listBackups(),
   ])
   const logsP = api.readLogTail('gateway', 20).catch(() => '')
@@ -99,25 +97,23 @@ async function loadDashboardData(page) {
     if (patched) api.writeOpenclawConfig(config).catch(() => {})
   }
 
-  renderStatCards(page, services, version, [], config, null)
+  renderStatCards(page, services, version, [], config)
 
-  // 第二波：Agent、隧道、MCP、ClawApp、备份 → 更新卡片 + 渲染总览
-  const [agentsRes, tunnelRes, mcpRes, clawappRes, backupsRes] = await secondaryP
+  // 第二波：Agent、MCP、备份 → 更新卡片 + 渲染总览
+  const [agentsRes, mcpRes, backupsRes] = await secondaryP
   const agents = agentsRes.status === 'fulfilled' ? agentsRes.value : []
-  const tunnel = tunnelRes.status === 'fulfilled' ? tunnelRes.value : null
   const mcpConfig = mcpRes.status === 'fulfilled' ? mcpRes.value : null
-  const clawapp = clawappRes.status === 'fulfilled' ? clawappRes.value : null
   const backups = backupsRes.status === 'fulfilled' ? backupsRes.value : []
 
-  renderStatCards(page, services, version, agents, config, tunnel)
-  renderOverview(page, services, clawapp, tunnel, mcpConfig, backups, config, agents)
+  renderStatCards(page, services, version, agents, config)
+  renderOverview(page, services, mcpConfig, backups, config, agents)
 
   // 第三波：日志（最低优先级）
   const logs = await logsP
   renderLogs(page, logs)
 }
 
-function renderStatCards(page, services, version, agents, config, tunnel) {
+function renderStatCards(page, services, version, agents, config) {
   const cardsEl = page.querySelector('#stat-cards')
   const gw = services.find(s => s.label === 'ai.openclaw.gateway')
   const runningCount = services.filter(s => s.running).length
@@ -158,14 +154,6 @@ function renderStatCards(page, services, version, agents, config, tunnel) {
     </div>
     <div class="stat-card">
       <div class="stat-card-header">
-        <span class="stat-card-label">内网穿透隧道</span>
-        <span class="status-dot ${tunnel?.running ? 'running' : 'stopped'}"></span>
-      </div>
-      <div class="stat-card-value">${tunnel?.running ? '运行中' : (tunnel?.installed ? '已停止' : '未配置')}</div>
-      <div class="stat-card-meta">${tunnel?.routes ? tunnel.routes.length + ' 个路由映射' : '——'}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card-header">
         <span class="stat-card-label">基础服务</span>
       </div>
       <div class="stat-card-value">${runningCount}/${services.length}</div>
@@ -198,7 +186,7 @@ function renderStatCards(page, services, version, agents, config, tunnel) {
   }
 }
 
-function renderOverview(page, services, clawapp, tunnel, mcpConfig, backups, config, agents) {
+function renderOverview(page, services, mcpConfig, backups, config, agents) {
   const containerEl = page.querySelector('#dashboard-overview-container')
   const gw = services.find(s => s.label === 'ai.openclaw.gateway')
   const mcpCount = mcpConfig?.mcpServers ? Object.keys(mcpConfig.mcpServers).length : 0
@@ -232,32 +220,6 @@ function renderOverview(page, services, clawapp, tunnel, mcpConfig, backups, con
               ? '<button class="btn btn-danger btn-xs" data-action="stop-gw">停止</button><button class="btn btn-secondary btn-xs" data-action="restart-gw">重启</button>'
               : '<button class="btn btn-primary btn-xs" data-action="start-gw">启动</button>'
             }
-          </div>
-        </div>
-        <div class="overview-item">
-          <div class="overview-label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            ClawApp 守护进程
-          </div>
-          <div class="overview-actions">
-            <span class="overview-status" style="color: ${clawapp?.running ? 'var(--success)' : 'var(--error)'}">
-              ${clawapp?.running ? '端口 ' + clawapp.port : '未启动'}
-            </span>
-            ${clawapp?.installed
-              ? (clawapp?.running
-                ? `<a class="btn btn-primary btn-xs" href="${clawapp.url || 'http://localhost:3210'}" target="_blank" rel="noopener">打开</a>`
-                : '<button class="btn btn-secondary btn-xs" data-action="goto-extensions">前往管理</button>')
-              : '<button class="btn btn-secondary btn-xs" data-action="goto-extensions">去安装</button>'
-            }
-          </div>
-        </div>
-        <div class="overview-item">
-          <div class="overview-label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            Cloudflare 隧道
-          </div>
-          <div class="overview-value" style="color: ${tunnel?.running ? 'var(--success)' : (tunnel?.installed ? 'var(--warning)' : 'var(--text-tertiary)')}">
-            ${tunnel?.running ? (tunnel.tunnel_name || '运行中') : (tunnel?.installed ? '已停止' : '未安装')}
           </div>
         </div>
         <div class="overview-item">
@@ -362,9 +324,6 @@ function bindActions(page) {
         setTimeout(() => loadDashboardData(page), 3000)
       } catch (err) { toast('重启失败: ' + err, 'error') }
       finally { actionBtn.disabled = false; actionBtn.textContent = '重启' }
-    }
-    if (action === 'goto-extensions') {
-      navigate('/extensions')
     }
   })
 
