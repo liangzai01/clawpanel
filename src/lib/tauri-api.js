@@ -18,6 +18,7 @@ const NO_MOCK_CMDS = new Set([
   'docker_restart_container', 'docker_remove_container', 'docker_container_exec', 'docker_gateway_chat', 'docker_pull_image',
   'docker_add_node', 'docker_remove_node',
   'instance_add', 'instance_remove', 'instance_set_active',
+  'install_node_portable',
 ])
 
 // 仅在 Node.js 后端实现的命令（Tauri Rust 不处理），强制走 webInvoke
@@ -343,6 +344,8 @@ export const api = {
   checkNodeAtPath: (nodeDir) => invoke('check_node_at_path', { nodeDir }),
   scanNodePaths: () => invoke('scan_node_paths'),
   saveCustomNodePath: (nodeDir) => invoke('save_custom_node_path', { nodeDir }),
+  getLatestNodeLtsVersion: () => invoke('get_latest_node_lts_version'),
+  installNodePortable: (mirror, version, installPath) => invoke('install_node_portable', { mirror, version, installPath: installPath || null }),
   getDeployConfig: () => cachedInvoke('get_deploy_config'),
   patchModelVision: () => invoke('patch_model_vision'),
   checkPanelUpdate: () => invoke('check_panel_update'),

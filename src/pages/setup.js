@@ -2,7 +2,7 @@
  * 初始设置页面 — openclaw 未安装时的引导
  * 自动检测环境 → 版本选择 → 一键安装 → 初始化向导
  */
-import { api } from '../lib/tauri-api.js'
+import { api, invalidate } from '../lib/tauri-api.js'
 import { showUpgradeModal } from '../components/modal.js'
 import { toast } from '../components/toast.js'
 import { setUpgrading, isMacPlatform } from '../lib/app-state.js'
@@ -131,14 +131,34 @@ function renderSteps(page, { node, cliOk, config }) {
         : `<p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">
             OpenClaw 基于 Node.js 运行，请先安装。
           </p>
-          <a class="btn btn-primary btn-sm" href="https://nodejs.org/" target="_blank" rel="noopener">下载 Node.js</a>
-          <span class="form-hint" style="margin-left:8px">安装后点击「重新检测」</span>
+          ${window.__TAURI_INTERNALS__
+            ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+                <button class="btn btn-primary btn-sm" id="btn-auto-install-node" disabled>
+                  一键安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
+                </button>
+                <select id="node-mirror-select" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-primary);background:var(--bg-secondary);color:var(--text-primary);font-size:var(--font-size-xs)">
+                  <option value="cn">npmmirror 淘宝镜像（国内推荐）</option>
+                  <option value="official">nodejs.org 官方</option>
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">安装到:</span>
+                <input id="node-install-path" type="text"
+                  value="${isWindowsClient() ? '~\\.openclaw\\node' : '~/.openclaw/node'}"
+                  style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
+              </div>
+              <div class="form-hint" style="margin-bottom:var(--space-sm)">绿色安装，不修改系统 PATH，安装完成后无需重启即可继续</div>
+              <a class="btn btn-secondary btn-sm" href="https://nodejs.org/" target="_blank" rel="noopener" style="margin-right:8px">手动下载</a>`
+            : `<a class="btn btn-primary btn-sm" href="https://nodejs.org/" target="_blank" rel="noopener">下载 Node.js</a>
+               <span class="form-hint" style="margin-left:8px">安装后点击「重新检测」</span>`
+          }
           <div style="margin-top:var(--space-sm);padding:8px 12px;background:var(--bg-tertiary);border-radius:var(--radius-sm);font-size:var(--font-size-xs);color:var(--text-secondary);line-height:1.6">
             <strong>已经装了但检测不到？</strong>
             ${isMacPlatform()
               ? `macOS 上从 Finder 启动可能找不到 Node.js。试试关掉 ClawPanel 后从终端启动：<br>
                  <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:3px;user-select:all">open /Applications/ClawPanel.app</code>`
-              : `安装 Node.js 后需要<strong>重启 ClawPanel</strong>，新的环境变量才能生效。`
+              : `若使用上方「一键安装」，无需重启即可识别。<br>
+                 若手动安装了 Node.js，需要<strong>重启 ClawPanel</strong> 后再检测（Windows 进程继承 PATH 在启动时固定）。`
             }
             <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <button class="btn btn-secondary btn-sm" id="btn-scan-node" style="font-size:11px;padding:3px 10px">${icon('search', 12)} 自动扫描</button>
@@ -193,6 +213,25 @@ function renderSteps(page, { node, cliOk, config }) {
 
   stepsEl.innerHTML = html
   bindEvents(page, { nodeOk, cliOk })
+
+  // Node.js 未安装时，异步获取最新 LTS 版本并更新按钮
+  if (!nodeOk && window.__TAURI_INTERNALS__) {
+    const btn = page.querySelector('#btn-auto-install-node')
+    const verEl = page.querySelector('#node-lts-ver')
+    api.getLatestNodeLtsVersion().then(ver => {
+      if (verEl) verEl.textContent = `v${ver}`
+      if (btn) {
+        btn.disabled = false
+        btn.dataset.nodeVersion = ver
+      }
+    }).catch(() => {
+      // 获取失败则使用 fallback，按钮仍可用
+      if (btn) {
+        btn.disabled = false
+        btn.dataset.nodeVersion = '22.14.0'
+      }
+    })
+  }
 }
 
 function renderInstallSection() {
@@ -353,6 +392,37 @@ function bindEvents(page, { nodeOk, cliOk }) {
       btn.addEventListener('click', () => openOnboardCommand())
     })
   }
+
+  // 一键安装 Node.js（便携版）
+  page.querySelector('#btn-auto-install-node')?.addEventListener('click', async (e) => {
+    const mirror = page.querySelector('#node-mirror-select')?.value || 'cn'
+    const version = e.currentTarget.dataset.nodeVersion || '22.14.0'
+    const installPath = page.querySelector('#node-install-path')?.value?.trim() || null
+    const modal = showUpgradeModal()
+    let unlistenLog, unlistenProgress
+
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const { listen } = await import('@tauri-apps/api/event')
+        unlistenLog = await listen('upgrade-log', (e) => modal.appendLog(e.payload))
+        unlistenProgress = await listen('upgrade-progress', (e) => modal.setProgress(e.payload))
+      }
+
+      const msg = await api.installNodePortable(mirror, version, installPath)
+      modal.setDone(msg)
+      toast('Node.js 安装成功', 'success')
+      modal.onClose(() => {
+        invalidate('check_node', 'check_installation')
+        runDetect(page)
+      })
+    } catch (e) {
+      modal.appendLog(String(e))
+      modal.setError('Node.js 安装失败')
+    } finally {
+      unlistenLog?.()
+      unlistenProgress?.()
+    }
+  })
 
   // 自动扫描 Node.js
   page.querySelector('#btn-scan-node')?.addEventListener('click', async () => {

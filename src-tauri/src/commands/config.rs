@@ -1104,6 +1104,43 @@ pub fn check_installation() -> Result<Value, String> {
 #[tauri::command]
 pub fn check_node() -> Result<Value, String> {
     let mut result = serde_json::Map::new();
+
+    // 优先直接读 clawpanel.json 中保存的自定义路径，不走 enhanced_path 缓存
+    // 这样便携安装完成后无需重启 ClawPanel 即可立即检测到
+    let custom_dir = super::openclaw_dir()
+        .join("clawpanel.json")
+        .exists()
+        .then(|| {
+            std::fs::read_to_string(super::openclaw_dir().join("clawpanel.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                .and_then(|v| v.get("nodePath")?.as_str().map(PathBuf::from))
+        })
+        .flatten();
+
+    if let Some(dir) = custom_dir {
+        #[cfg(target_os = "windows")]
+        let node_bin = dir.join("node.exe");
+        #[cfg(not(target_os = "windows"))]
+        let node_bin = dir.join("node");
+
+        if node_bin.exists() {
+            let mut cmd = Command::new(&node_bin);
+            cmd.arg("--version");
+            #[cfg(target_os = "windows")]
+            cmd.creation_flags(0x08000000);
+            if let Ok(o) = cmd.output() {
+                if o.status.success() {
+                    let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    result.insert("installed".into(), Value::Bool(true));
+                    result.insert("version".into(), Value::String(ver));
+                    return Ok(Value::Object(result));
+                }
+            }
+        }
+    }
+
+    // 回退：通过 enhanced_path（含系统 PATH + 常见安装目录）查找
     let mut cmd = Command::new("node");
     cmd.arg("--version");
     cmd.env("PATH", super::enhanced_path());
@@ -1303,6 +1340,240 @@ pub fn save_custom_node_path(node_dir: String) -> Result<(), String> {
         .map_err(|e| format!("序列化失败: {e}"))?;
     std::fs::write(&config_path, json).map_err(|e| format!("写入配置失败: {e}"))?;
     Ok(())
+}
+
+// ===== Node.js 便携版自动安装 =====
+
+/// 根据当前平台返回 Node.js 安装包文件名
+fn node_portable_filename(version: &str) -> String {
+    let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" };
+    if cfg!(target_os = "windows") {
+        format!("node-v{version}-win-x64.zip")
+    } else if cfg!(target_os = "macos") {
+        format!("node-v{version}-darwin-{arch}.tar.gz")
+    } else {
+        format!("node-v{version}-linux-{arch}.tar.gz")
+    }
+}
+
+/// 解压后 node 可执行文件所在目录
+fn node_portable_bin_dir(install_base: &PathBuf, dir_stem: &str) -> PathBuf {
+    let inner = install_base.join(dir_stem);
+    if cfg!(target_os = "windows") {
+        inner
+    } else {
+        inner.join("bin")
+    }
+}
+
+/// 展开路径中的 ~ 为用户主目录（兼容 Unix 的 ~/ 和 Windows 的 ~\）
+fn expand_tilde(path: &str) -> PathBuf {
+    let stripped = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"));
+    if let Some(rest) = stripped {
+        dirs::home_dir().unwrap_or_default().join(rest)
+    } else if path == "~" {
+        dirs::home_dir().unwrap_or_default()
+    } else {
+        PathBuf::from(path)
+    }
+}
+
+/// 从 SHASUMS256.txt 内容中解析 Node.js 版本号
+fn parse_node_version_from_shasums(content: &str) -> Option<String> {
+    let re = regex::Regex::new(r"node-v(\d+\.\d+\.\d+)").ok()?;
+    re.captures(content)?.get(1).map(|m| m.as_str().to_string())
+}
+
+/// 从网络获取最新 Node.js LTS 版本号，失败时返回 fallback
+async fn fetch_lts_version_inner() -> Option<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+    // 淘宝镜像优先（对国内用户更快），失败回退官方
+    let urls = [
+        "https://registry.npmmirror.com/-/binary/node/latest-v22.x/SHASUMS256.txt",
+        "https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt",
+    ];
+    for url in urls {
+        if let Ok(resp) = client.get(url).send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    if let Some(ver) = parse_node_version_from_shasums(&text) {
+                        return Some(ver);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 获取最新 Node.js LTS 版本号（v22.x），失败时返回内置 fallback
+#[tauri::command]
+pub async fn get_latest_node_lts_version() -> Result<String, String> {
+    const FALLBACK: &str = "22.14.0";
+    Ok(fetch_lts_version_inner().await.unwrap_or_else(|| FALLBACK.to_string()))
+}
+
+/// 自动下载并安装便携版 Node.js（不修改系统 PATH）
+#[tauri::command]
+pub async fn install_node_portable(
+    app: tauri::AppHandle,
+    mirror: String,
+    version: String,
+    install_path: Option<String>,
+) -> Result<String, String> {
+    use tauri::Emitter;
+
+    let filename = node_portable_filename(&version);
+    let dir_stem = filename.replace(".tar.gz", "").replace(".zip", "");
+    let install_base = install_path
+        .as_deref()
+        .map(expand_tilde)
+        .unwrap_or_else(|| super::openclaw_dir().join("node"));
+    let bin_dir = node_portable_bin_dir(&install_base, &dir_stem);
+
+    #[cfg(target_os = "windows")]
+    let node_bin = bin_dir.join("node.exe");
+    #[cfg(not(target_os = "windows"))]
+    let node_bin = bin_dir.join("node");
+
+    // 已安装则跳过下载直接更新路径
+    if node_bin.exists() {
+        let _ = app.emit("upgrade-log", "已找到便携版 Node.js，跳过下载...");
+        let _ = app.emit("upgrade-progress", 90);
+        save_custom_node_path(bin_dir.to_string_lossy().to_string())?;
+        let _ = app.emit("upgrade-progress", 100);
+        let msg = format!("✅ Node.js v{version} 已就绪");
+        let _ = app.emit("upgrade-log", &msg);
+        return Ok(msg);
+    }
+
+    let url = if mirror == "official" {
+        format!("https://nodejs.org/dist/v{version}/{filename}")
+    } else {
+        format!("https://registry.npmmirror.com/-/binary/node/v{version}/{filename}")
+    };
+
+    let tmp_path = super::openclaw_dir().join(&filename);
+
+    let _ = app.emit("upgrade-log", format!("下载 Node.js v{version} (~30MB)..."));
+    let _ = app.emit("upgrade-log", format!("来源: {url}"));
+    let _ = app.emit("upgrade-progress", 5);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+    let mut response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("下载失败，HTTP {}", response.status()));
+    }
+
+    let total = response.content_length();
+    let mut buf: Vec<u8> = Vec::new();
+    if let Some(t) = total {
+        buf.reserve(t as usize);
+    }
+
+    let mut last_log_mb = 0u64;
+    while let Some(chunk) = response.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
+        buf.extend_from_slice(&chunk);
+        let downloaded = buf.len() as u64;
+        let mb = downloaded / (1024 * 1024);
+        if mb > last_log_mb {
+            last_log_mb = mb;
+            if let Some(t) = total {
+                let total_mb = t / (1024 * 1024);
+                let _ = app.emit("upgrade-log", format!("下载中... {mb}MB / {total_mb}MB"));
+                let p = (downloaded * 50 / t) as u32;
+                let _ = app.emit("upgrade-progress", 5 + p);
+            } else {
+                let _ = app.emit("upgrade-log", format!("下载中... {mb}MB"));
+            }
+        }
+    }
+
+    let dl_mb = buf.len() / (1024 * 1024);
+    let _ = app.emit("upgrade-log", format!("下载完成（{dl_mb}MB），正在解压..."));
+    let _ = app.emit("upgrade-progress", 58);
+
+    fs::write(&tmp_path, &buf).map_err(|e| format!("保存临时文件失败: {e}"))?;
+    drop(buf);
+
+    fs::create_dir_all(&install_base).map_err(|e| format!("创建安装目录失败: {e}"))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let file = fs::File::open(&tmp_path).map_err(|e| format!("打开压缩包失败: {e}"))?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取 ZIP 失败: {e}"))?;
+        let total_entries = archive.len();
+        for i in 0..total_entries {
+            let mut entry = archive.by_index(i).map_err(|e| format!("读取 ZIP 条目失败: {e}"))?;
+            let outpath = install_base.join(entry.name());
+            if entry.is_dir() {
+                let _ = fs::create_dir_all(&outpath);
+            } else {
+                if let Some(parent) = outpath.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let mut out = fs::File::create(&outpath)
+                    .map_err(|e| format!("创建文件 {} 失败: {e}", outpath.display()))?;
+                std::io::copy(&mut entry, &mut out).map_err(|e| format!("解压文件失败: {e}"))?;
+            }
+            if total_entries > 0 && i % 200 == 0 {
+                let p = 58u32 + (i as u32 * 22 / total_entries as u32);
+                let _ = app.emit("upgrade-progress", p);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let status = Command::new("tar")
+            .args([
+                "-xzf",
+                tmp_path.to_str().unwrap_or_default(),
+                "-C",
+                install_base.to_str().unwrap_or_default(),
+            ])
+            .status()
+            .map_err(|e| format!("执行 tar 命令失败: {e}"))?;
+        if !status.success() {
+            let _ = fs::remove_file(&tmp_path);
+            return Err("tar 解压失败，请检查磁盘空间是否充足".into());
+        }
+    }
+
+    let _ = app.emit("upgrade-progress", 85);
+
+    if !node_bin.exists() {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(format!("解压后未找到 node 可执行文件: {}", node_bin.display()));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = Command::new("chmod")
+            .args(["-R", "+x", bin_dir.to_str().unwrap_or_default()])
+            .output();
+    }
+
+    save_custom_node_path(bin_dir.to_string_lossy().to_string())?;
+    let _ = fs::remove_file(&tmp_path);
+
+    let _ = app.emit("upgrade-progress", 100);
+    let msg = format!("✅ Node.js v{version} 安装成功");
+    let _ = app.emit("upgrade-log", &msg);
+    let _ = app.emit("upgrade-log", format!("路径: {}", bin_dir.display()));
+    Ok(msg)
 }
 
 #[tauri::command]

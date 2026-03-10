@@ -71,6 +71,8 @@ pub fn run() {
             config::check_node_at_path,
             config::scan_node_paths,
             config::save_custom_node_path,
+            config::get_latest_node_lts_version,
+            config::install_node_portable,
             config::write_env_file,
             config::launch_openclaw_onboard_admin,
             config::list_backups,
