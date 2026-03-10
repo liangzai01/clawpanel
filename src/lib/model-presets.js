@@ -131,9 +131,9 @@ export const PROVIDER_PRESETS = [
     keyUrl: 'https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application',
   },
   {
-    key: 'xiaomi', label: '小米 AI (MiModel)', category: 'cn',
-    baseUrl: 'https://api.micloud.xiaomi.net/v1', api: 'openai-completions',
-    keyUrl: 'https://micloud.xiaomi.com',
+    key: 'xiaomi', label: '小米 MiMo', category: 'cn',
+    baseUrl: 'https://api.xiaomimimo.com/anthropic', api: 'anthropic-messages',
+    keyUrl: 'https://platform.xiaomi.com/mimo',
   },
   {
     key: 'shengsuan', label: '胜算云', category: 'cn',
@@ -196,6 +196,7 @@ export const MODEL_PRESETS = {
 
   // ── OpenAI ──────────────────────────────────────────────────────────────
   openai: [
+    { id: 'gpt-5.1-codex', name: 'GPT-5.1 Codex', contextWindow: 400000, reasoning: true, input: ['text', 'image'] },
     { id: 'gpt-4.1',      name: 'GPT-4.1',      contextWindow: 1047576, input: ['text', 'image'] },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', contextWindow: 1047576, input: ['text', 'image'] },
     { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', contextWindow: 1047576, input: ['text', 'image'] },
@@ -210,15 +211,16 @@ export const MODEL_PRESETS = {
 
   // ── Anthropic ───────────────────────────────────────────────────────────
   anthropic: [
-    { id: 'claude-opus-4-5-20250514',   name: 'Claude Opus 4.5',   contextWindow: 200000, input: ['text', 'image'] },
-    { id: 'claude-sonnet-4-5-20250514', name: 'Claude Sonnet 4.5', contextWindow: 200000, input: ['text', 'image'] },
-    { id: 'claude-haiku-4-5-20251001',  name: 'Claude Haiku 4.5',  contextWindow: 200000, input: ['text', 'image'] },
-    { id: 'claude-haiku-3-5-20241022',  name: 'Claude Haiku 3.5',  contextWindow: 200000, input: ['text', 'image'] },
-    { id: 'claude-sonnet-3-7-20250219', name: 'Claude Sonnet 3.7', contextWindow: 200000, reasoning: true, input: ['text', 'image'] },
+    { id: 'claude-opus-4-6',   name: 'Claude Opus 4.6',   contextWindow: 200000, input: ['text', 'image'] },
+    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 200000, input: ['text', 'image'] },
+    { id: 'claude-haiku-4-5',  name: 'Claude Haiku 4.5',  contextWindow: 200000, input: ['text', 'image'] },
+    { id: 'claude-haiku-3-5',  name: 'Claude Haiku 3.5',  contextWindow: 200000, input: ['text', 'image'] },
+    { id: 'claude-sonnet-3-7', name: 'Claude Sonnet 3.7', contextWindow: 200000, reasoning: true, input: ['text', 'image'] },
   ],
 
   // ── Google Gemini ────────────────────────────────────────────────────────
   google: [
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', contextWindow: 1000000, reasoning: true, input: ['text', 'image'] },
     { id: 'gemini-2.5-pro',    name: 'Gemini 2.5 Pro',    contextWindow: 1000000, reasoning: true, input: ['text', 'image'] },
     { id: 'gemini-2.5-flash',  name: 'Gemini 2.5 Flash',  contextWindow: 1000000, input: ['text', 'image'] },
     { id: 'gemini-2.0-flash',  name: 'Gemini 2.0 Flash',  contextWindow: 1000000, input: ['text', 'image'] },
@@ -276,18 +278,24 @@ export const MODEL_PRESETS = {
 
   // ── OpenRouter ──────────────────────────────────────────────────────────
   openrouter: [
-    { id: 'openai/gpt-4o',                               name: 'GPT-4o',               contextWindow: 128000,  input: ['text', 'image'] },
-    { id: 'openai/gpt-4.1',                              name: 'GPT-4.1',              contextWindow: 1047576, input: ['text', 'image'] },
-    { id: 'anthropic/claude-sonnet-4-5',                 name: 'Claude Sonnet 4.5',    contextWindow: 200000,  input: ['text', 'image'] },
-    { id: 'anthropic/claude-haiku-3-5',                  name: 'Claude Haiku 3.5',     contextWindow: 200000,  input: ['text', 'image'] },
-    { id: 'google/gemini-2.5-pro',                       name: 'Gemini 2.5 Pro',       contextWindow: 1000000, reasoning: true, input: ['text', 'image'] },
-    { id: 'google/gemini-2.0-flash-001',                 name: 'Gemini 2.0 Flash',     contextWindow: 1000000, input: ['text', 'image'] },
-    { id: 'deepseek/deepseek-r1',                        name: 'DeepSeek R1',           contextWindow: 64000,   reasoning: true, input: ['text'] },
-    { id: 'deepseek/deepseek-chat-v3-0324',              name: 'DeepSeek V3',           contextWindow: 64000,   input: ['text'] },
-    { id: 'meta-llama/llama-3.3-70b-instruct',          name: 'Llama 3.3 70B',         contextWindow: 131072,  input: ['text'] },
-    { id: 'mistralai/mistral-large-2411',               name: 'Mistral Large',          contextWindow: 131072,  input: ['text'] },
+    { id: 'openai/gpt-5.1-codex',                       name: 'GPT-5.1 Codex',         contextWindow: 400000,  reasoning: true, input: ['text', 'image'] },
+    { id: 'anthropic/claude-opus-4.6',                  name: 'Claude Opus 4.6',       contextWindow: 200000,  input: ['text', 'image'] },
+    { id: 'anthropic/claude-sonnet-4-5',                name: 'Claude Sonnet 4.5',     contextWindow: 200000,  input: ['text', 'image'] },
+    { id: 'google/gemini-3-pro-preview',                name: 'Gemini 3 Pro Preview',  contextWindow: 1000000, reasoning: true, input: ['text', 'image'] },
+    { id: 'google/gemini-2.5-pro',                      name: 'Gemini 2.5 Pro',        contextWindow: 1000000, reasoning: true, input: ['text', 'image'] },
+    { id: 'moonshotai/kimi-k2.5',                       name: 'Kimi K2.5',             contextWindow: 131072,  input: ['text'] },
+    { id: 'z-ai/glm-5',                                 name: 'GLM-5',                 contextWindow: 128000,  reasoning: true, input: ['text'] },
+    { id: 'deepseek/deepseek-r1',                       name: 'DeepSeek R1',           contextWindow: 64000,   reasoning: true, input: ['text'] },
+    { id: 'deepseek/deepseek-chat-v3-0324',             name: 'DeepSeek V3',           contextWindow: 64000,   input: ['text'] },
     { id: 'x-ai/grok-3',                                name: 'Grok 3',                contextWindow: 131072,  input: ['text', 'image'] },
     { id: 'qwen/qwen-2.5-72b-instruct',                 name: 'Qwen2.5 72B',           contextWindow: 131072,  input: ['text'] },
+  ],
+
+  // ── Z.AI ────────────────────────────────────────────────────────────────
+  zai: [
+    { id: 'glm-5',      name: 'GLM-5',      contextWindow: 128000, reasoning: true, input: ['text'] },
+    { id: 'glm-4.6',    name: 'GLM-4.6',    contextWindow: 128000, input: ['text'] },
+    { id: 'glm-4.5-air', name: 'GLM-4.5 Air', contextWindow: 128000, input: ['text'] },
   ],
 
   // ── DeepSeek ────────────────────────────────────────────────────────────
@@ -327,18 +335,19 @@ export const MODEL_PRESETS = {
 
   // ── Moonshot AI (Kimi) ────────────────────────────────────────────────────
   moonshot: [
+    { id: 'kimi-k2.5',       name: 'Kimi K2.5',      contextWindow: 131072, input: ['text'] },
+    { id: 'kimi-k2-0711-preview', name: 'Kimi K2 Preview', contextWindow: 131072, input: ['text'] },
     { id: 'moonshot-v1-8k',   name: 'Moonshot 8K',    contextWindow: 8192,   input: ['text'] },
     { id: 'moonshot-v1-32k',  name: 'Moonshot 32K',   contextWindow: 32768,  input: ['text'] },
     { id: 'moonshot-v1-128k', name: 'Moonshot 128K',  contextWindow: 131072, input: ['text'] },
-    { id: 'kimi-k2-0711-preview', name: 'Kimi K2',    contextWindow: 131072, input: ['text'] },
   ],
 
   // ── MiniMax ──────────────────────────────────────────────────────────────
   minimax: [
-    { id: 'MiniMax-Text-01', name: 'MiniMax Text-01', contextWindow: 1000000, input: ['text'] },
-    { id: 'abab6.5s-chat',   name: 'ABAB 6.5s',       contextWindow: 8192,    input: ['text'] },
-    { id: 'abab6.5-chat',    name: 'ABAB 6.5',        contextWindow: 8192,    input: ['text', 'image'] },
-    { id: 'abab5.5-chat',    name: 'ABAB 5.5',        contextWindow: 16384,   input: ['text'] },
+    { id: 'MiniMax-M2.1',            name: 'MiniMax M2.1',            contextWindow: 1000000, input: ['text'] },
+    { id: 'MiniMax-M2.1-lightning',  name: 'MiniMax M2.1 Lightning',  contextWindow: 1000000, input: ['text'] },
+    { id: 'minimax-m2.1-gs32',       name: 'MiniMax M2.1 GS32',       contextWindow: 32768,   input: ['text'] },
+    { id: 'MiniMax-Text-01',         name: 'MiniMax Text-01',         contextWindow: 1000000, input: ['text'] },
   ],
 
   // ── 火山引擎 (Doubao / Volcano Engine) ────────────────────────────────────
@@ -360,6 +369,12 @@ export const MODEL_PRESETS = {
     { id: 'ernie-speed-128k',       name: 'ERNIE Speed 128K',   contextWindow: 131072, input: ['text'] },
     { id: 'deepseek-v3',            name: 'DeepSeek V3',         contextWindow: 64000,  input: ['text'] },
     { id: 'deepseek-r1',            name: 'DeepSeek R1',         contextWindow: 64000,  reasoning: true, input: ['text'] },
+  ],
+
+  // ── 小米 MiMo ─────────────────────────────────────────────────────────────
+  xiaomi: [
+    { id: 'mimo-v2-flash', name: 'MiMo V2 Flash', contextWindow: 128000, input: ['text', 'image'] },
+    { id: 'mimo-v1',       name: 'MiMo V1',       contextWindow: 128000, input: ['text', 'image'] },
   ],
 }
 

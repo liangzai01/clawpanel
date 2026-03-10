@@ -88,6 +88,36 @@ function getApiTypeLabel(apiType) {
   return API_TYPES.find(t => t.value === apiType)?.label || apiType || '未知'
 }
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function getProviderDisplayLabel(providerKey) {
+  return PROVIDER_PRESETS.find(p => p.key === providerKey)?.label || providerKey
+}
+
+function flattenModelPresetGroups() {
+  return Object.entries(MODEL_PRESETS)
+    .filter(([, models]) => Array.isArray(models) && models.length)
+    .map(([providerKey, models]) => ({
+      providerKey,
+      providerLabel: getProviderDisplayLabel(providerKey),
+      models,
+    }))
+}
+
+function findKnownModelPreset(modelId) {
+  for (const group of flattenModelPresetGroups()) {
+    const model = group.models.find(item => item.id === modelId)
+    if (model) return { ...group, model }
+  }
+  return null
+}
+
 // 渲染当前主模型状态栏
 function renderDefaultBar(page, state) {
   const bar = page.querySelector('#default-model-bar')
@@ -689,15 +719,17 @@ function addProvider(page, state) {
   const overlay = document.createElement('div')
   overlay.className = 'modal-overlay'
   overlay.innerHTML = `
-    <div class="modal" style="max-height:90vh;overflow-y:auto">
+    <div class="modal models-modal" style="max-height:90vh;overflow-y:auto">
       <div class="modal-title">添加服务商</div>
       <div class="form-group">
         <label class="form-label">快捷选择</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${quickBtns}</div>
-        <select class="form-input" id="provider-select">
-          <option value="">— 从全部服务商中选择 —</option>
-          ${selectOptions}
-        </select>
+        <div class="panel-select-shell">
+          <select class="form-input panel-select" id="provider-select">
+            <option value="">— 从全部服务商中选择 —</option>
+            ${selectOptions}
+          </select>
+        </div>
         <div class="form-hint">选择常用服务商自动填充，或手动填写下方信息</div>
       </div>
       <div class="form-group">
@@ -712,11 +744,13 @@ function addProvider(page, state) {
       </div>
       <div class="form-group">
         <label class="form-label">API 密钥提供方式</label>
-        <select class="form-input" id="provider-key-mode">
-          <option value="paste">直接粘贴 API 密钥</option>
-          <option value="env">使用环境变量</option>
-          <option value="skip">跳过（无需密钥，如本地模型）</option>
-        </select>
+        <div class="panel-select-shell">
+          <select class="form-input panel-select" id="provider-key-mode">
+            <option value="paste">直接粘贴 API 密钥</option>
+            <option value="env">使用环境变量</option>
+            <option value="skip">跳过（无需密钥，如本地模型）</option>
+          </select>
+        </div>
       </div>
       <div id="provider-key-field">
         <div class="form-group">
@@ -728,9 +762,11 @@ function addProvider(page, state) {
       <div id="provider-models-section" style="border-top:1px solid var(--border-primary);padding-top:var(--space-md);margin-top:var(--space-sm)"></div>
       <div class="form-group" style="border-top:1px solid var(--border-primary);padding-top:var(--space-md);margin-top:var(--space-sm)">
         <label class="form-label">Endpoint compatibility（接口协议）</label>
-        <select class="form-input" data-name="api">
-          ${API_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
-        </select>
+        <div class="panel-select-shell">
+          <select class="form-input panel-select" data-name="api">
+            ${API_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
+          </select>
+        </div>
         <div class="form-hint">大多数服务商（含中转站）选「OpenAI 兼容」即可</div>
       </div>
       <div class="modal-actions">
@@ -750,7 +786,7 @@ function addProvider(page, state) {
         <div class="form-group">
           <label class="form-label" style="display:flex;justify-content:space-between">
             <span>API Key</span>
-            ${keyLink ? `<a href="${keyLink}" target="_blank" style="font-size:var(--font-size-xs);color:var(--primary)">前往获取 →</a>` : ''}
+            ${keyLink ? `<a href="${keyLink}" target="_blank" style="font-size:var(--font-size-xs);color:var(--accent)">前往获取 →</a>` : ''}
           </label>
           <input class="form-input" id="provider-apikey-input" type="password" placeholder="sk-...">
           <div class="form-hint">访问服务所需的密钥，留空表示无需认证</div>
@@ -771,36 +807,54 @@ function addProvider(page, state) {
     renderKeyField(e.target.value, null)
   })
 
-  // ── 模型区域：预设 checkbox 列表 or 自定义 tag 输入 ───────────────────────
+  // ── 模型区域：服务商预设下拉 or 全局模型下拉 + 手动兜底 ───────────────────
   function renderModelsSection(presetKey) {
     const section = overlay.querySelector('#provider-models-section')
     const isCustom = !presetKey || presetKey === '__custom__'
-    const presets  = isCustom ? [] : (MODEL_PRESETS[presetKey] || [])
+    const presets = isCustom ? [] : (MODEL_PRESETS[presetKey] || [])
+    const syncManualInput = () => {
+      const selectEl = section.querySelector('#ap-model-select')
+      const manualWrap = section.querySelector('#ap-model-manual-wrap')
+      if (!selectEl) return
+      if (manualWrap) manualWrap.style.display = selectEl.value === '__manual__' ? 'block' : 'none'
+    }
 
     if (isCustom) {
-      // 自定义：单个 Model ID 文本输入
+      const groups = flattenModelPresetGroups()
       section.innerHTML = `
         <div class="form-group">
           <label class="form-label">Model ID</label>
+          <div class="panel-select-shell">
+            <select class="form-input panel-select" id="ap-model-select">
+              <option value="">— 先从 OpenClaw 常用模型里选择 —</option>
+              ${groups.map(group => `
+                <optgroup label="${escapeHtml(group.providerLabel)}">
+                  ${group.models.map(model => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name || model.id)} · ${escapeHtml(model.id)}</option>`).join('')}
+                </optgroup>
+              `).join('')}
+              <option value="__manual__">手动输入其他 Model ID</option>
+            </select>
+          </div>
+          <div class="form-hint">先从 OpenClaw 现有可配置模型中选择；若目标模型不在列表中，可切换到手动输入</div>
+        </div>
+        <div class="form-group" id="ap-model-manual-wrap" style="display:none">
+          <label class="form-label">自定义 Model ID</label>
           <input class="form-input" id="ap-model-input" placeholder="例：llama3.2 或 gpt-4o-mini">
-          <div class="form-hint">填写该服务商的模型标识符，添加后可继续追加其他模型</div>
+          <div class="form-hint">必须与该服务商 API 返回的模型标识完全一致</div>
         </div>`
+      section.querySelector('#ap-model-select')?.addEventListener('change', syncManualInput)
+      syncManualInput()
 
     } else if (presets.length) {
-      // 预设：展开列表单选（size 属性让所有选项可见，避免折叠态被误认为只有一项）
-      const listSize = Math.min(presets.length, 7)
-      const fmtCtx = (w) => {
-        if (!w) return ''
-        const k = Math.round(w / 1000)
-        return k >= 1000 ? ` (${(k / 1000).toFixed(1)}M)` : ` (${k}K)`
-      }
       section.innerHTML = `
         <div class="form-group">
           <label class="form-label">Model ID</label>
-          <select class="form-input" id="ap-model-select" size="${listSize}" style="height:auto;padding:4px 0;overflow-y:auto">
-            ${presets.map(m => `<option value="${m.id}">${m.id}${m.name !== m.id ? ' — ' + m.name : ''}${fmtCtx(m.contextWindow)}${m.reasoning ? ' [推理]' : ''}</option>`).join('')}
-          </select>
-          <div class="form-hint">选择一个模型添加，其余可在服务商详情中继续添加</div>
+          <div class="panel-select-shell">
+            <select class="form-input panel-select" id="ap-model-select">
+              ${presets.map(model => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name || model.id)} · ${escapeHtml(model.id)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-hint">先选一个默认模型，添加服务商后仍可在该服务商下继续追加其他模型</div>
         </div>`
 
     } else {
@@ -825,7 +879,7 @@ function addProvider(page, state) {
 
     overlay.querySelectorAll('.provider-quick-btn').forEach(b => b.style.outline = '')
     const activeBtn = overlay.querySelector(`.provider-quick-btn[data-preset="${key}"]`)
-    if (activeBtn) activeBtn.style.outline = '2px solid var(--primary)'
+    if (activeBtn) activeBtn.style.outline = '2px solid var(--accent)'
   }
 
   // 初始渲染模型区域（空状态提示）
@@ -866,16 +920,21 @@ function addProvider(page, state) {
     const currentPresetKey = overlay.querySelector('#provider-select').value
     const isCustom = !currentPresetKey || currentPresetKey === '__custom__'
     let models = []
+    const selectedModelId = overlay.querySelector('#ap-model-select')?.value || ''
 
     if (isCustom) {
-      const modelId = overlay.querySelector('#ap-model-input')?.value.trim()
-      if (modelId) models = [{ id: modelId, name: modelId, input: ['text', 'image'] }]
+      if (selectedModelId && selectedModelId !== '__manual__') {
+        const preset = findKnownModelPreset(selectedModelId)?.model
+        if (preset) models = [normalizeModel(preset)]
+      } else {
+        const modelId = overlay.querySelector('#ap-model-input')?.value.trim()
+        if (modelId) models = [normalizeModel({ id: modelId, name: modelId })]
+      }
     } else {
       const allPresets = MODEL_PRESETS[currentPresetKey] || []
-      const selected = overlay.querySelector('#ap-model-select')?.value
-      if (selected) {
-        const m = allPresets.find(p => p.id === selected)
-        if (m) models = [{ ...m, input: ['text', 'image'] }]
+      if (selectedModelId) {
+        const m = allPresets.find(p => p.id === selectedModelId)
+        if (m) models = [normalizeModel(m)]
       }
     }
 
@@ -936,7 +995,7 @@ function editProvider(page, state, providerKey) {
   const overlay = document.createElement('div')
   overlay.className = 'modal-overlay'
   overlay.innerHTML = `
-    <div class="modal">
+    <div class="modal models-modal">
       <div class="modal-title">编辑服务商: ${providerKey}</div>
       <div class="form-group">
         <label class="form-label">API Base URL</label>
@@ -945,17 +1004,21 @@ function editProvider(page, state, providerKey) {
       </div>
       <div class="form-group">
         <label class="form-label">Endpoint compatibility（接口协议）</label>
-        <select class="form-input" data-name="api">
-          ${API_TYPES.map(t => `<option value="${t.value}" ${(p.api || 'openai-completions') === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
-        </select>
+        <div class="panel-select-shell">
+          <select class="form-input panel-select" data-name="api">
+            ${API_TYPES.map(t => `<option value="${t.value}" ${(p.api || 'openai-completions') === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+          </select>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">API 密钥提供方式</label>
-        <select class="form-input" id="ep-key-mode">
-          <option value="paste" ${initMode === 'paste' ? 'selected' : ''}>直接粘贴 API 密钥</option>
-          <option value="env"   ${initMode === 'env'   ? 'selected' : ''}>使用环境变量</option>
-          <option value="skip"  ${initMode === 'skip'  ? 'selected' : ''}>跳过（无需密钥，如本地模型）</option>
-        </select>
+        <div class="panel-select-shell">
+          <select class="form-input panel-select" id="ep-key-mode">
+            <option value="paste" ${initMode === 'paste' ? 'selected' : ''}>直接粘贴 API 密钥</option>
+            <option value="env"   ${initMode === 'env'   ? 'selected' : ''}>使用环境变量</option>
+            <option value="skip"  ${initMode === 'skip'  ? 'selected' : ''}>跳过（无需密钥，如本地模型）</option>
+          </select>
+        </div>
       </div>
       <div id="ep-key-field"></div>
       <div class="modal-actions">
