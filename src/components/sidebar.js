@@ -3,57 +3,17 @@
  */
 import { navigate, getCurrentRoute } from '../router.js'
 import { toggleTheme, getTheme } from '../lib/theme.js'
-import { isOpenclawReady, getActiveInstance, switchInstance, onInstanceChange } from '../lib/app-state.js'
+import { getActiveInstance, switchInstance, onInstanceChange } from '../lib/app-state.js'
 import { api } from '../lib/tauri-api.js'
 import { version as APP_VERSION } from '../../package.json'
 
-const NAV_ITEMS_FULL = [
-  {
-    section: '概览',
-    items: [
-      { route: '/dashboard', label: '仪表盘', icon: 'dashboard' },
-      { route: '/chat', label: '实时聊天', icon: 'chat' },
-      { route: '/services', label: '服务管理', icon: 'services' },
-      { route: '/logs', label: '日志查看', icon: 'logs' },
-    ]
-  },
-  {
-    section: '配置',
-    items: [
-      { route: '/models', label: '模型配置', icon: 'models' },
-      { route: '/agents', label: 'Agent 管理', icon: 'agents' },
-      { route: '/gateway', label: 'Gateway', icon: 'gateway' },
-      { route: '/security', label: '安全设置', icon: 'security' },
-    ]
-  },
-  {
-    section: '数据',
-    items: [
-      { route: '/memory', label: '记忆文件', icon: 'memory' },
-    ]
-  },
-  {
-    section: '扩展',
-    items: [
-      { route: '/skills', label: 'Skills', icon: 'skills' },
-    ]
-  },
-  {
-    section: '',
-    items: [
-      { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
-      { route: '/about', label: '关于', icon: 'about' },
-    ]
-  }
-]
-
-const NAV_ITEMS_SETUP = [
+const NAV_ITEMS = [
   {
     section: '',
     items: [
       { route: '/setup', label: '初始设置', icon: 'setup' },
-      // { route: '/extensions', label: '扩展工具', icon: 'extensions' },
       { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
+      { route: '/about', label: '关于', icon: 'about' },
     ]
   }
 ]
@@ -101,9 +61,9 @@ export function renderSidebar(el) {
   let html = `
     <div class="sidebar-header">
       <div class="sidebar-logo">
-        <img src="/images/logo.png" alt="ClawPanel">
+        <img src="/images/logo.png" alt="OpenClaw">
       </div>
-      <span class="sidebar-title">ClawPanel</span>
+      <span class="sidebar-title">OpenClaw</span>
       <button class="sidebar-close-btn" id="btn-sidebar-close" title="关闭菜单">&times;</button>
     </div>
     ${showSwitcher ? `<div class="instance-switcher" id="instance-switcher">
@@ -117,7 +77,7 @@ export function renderSidebar(el) {
     <nav class="sidebar-nav">
   `
 
-  const navItems = isOpenclawReady() ? NAV_ITEMS_FULL : NAV_ITEMS_SETUP
+  const navItems = NAV_ITEMS
 
   for (const section of navItems) {
     html += `<div class="nav-section">

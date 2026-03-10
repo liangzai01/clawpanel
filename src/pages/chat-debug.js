@@ -231,7 +231,7 @@ function renderDebugInfo(el, info) {
     html += `<li style="color:var(--error);margin-bottom:6px">${statusIcon('err')} OpenClaw CLI 未安装，请前往"初始设置"页面安装</li>`
   }
   if (info.services?.length > 0 && !info.services[0]?.running) {
-    html += `<li style="color:var(--warning);margin-bottom:6px">${statusIcon('warn')} Gateway 未启动，请前往"服务管理"页面启动服务</li>`
+    html += `<li style="color:var(--warning);margin-bottom:6px">${statusIcon('warn')} Gateway 未启动；如需继续做连接诊断，请先在终端执行 <code>openclaw gateway</code> 或自行以服务方式启动</li>`
   }
   if (info.config && !info.config.gateway?.auth?.token) {
     html += `<li style="color:var(--warning);margin-bottom:6px">${statusIcon('warn')} Gateway token 未设置（本地开发可选，生产环境建议设置）</li>`
@@ -592,4 +592,3 @@ async function fixPairing(page) {
     if (fixBtn) { fixBtn.disabled = false; fixBtn.textContent = '一键修复配对' }
   }
 }
-

@@ -4,12 +4,11 @@
 import { registerRoute, initRouter, navigate, setDefaultRoute } from './router.js'
 import { renderSidebar, openMobileSidebar } from './components/sidebar.js'
 import { initTheme } from './lib/theme.js'
-import { detectOpenclawStatus, isOpenclawReady, isGatewayRunning, onGatewayChange, startGatewayPoll, onGuardianGiveUp, resetAutoRestart, loadActiveInstance, getActiveInstance, onInstanceChange } from './lib/app-state.js'
+import { detectOpenclawStatus, isOpenclawReady, isGatewayRunning, onGatewayChange, startGatewayPoll, loadActiveInstance, getActiveInstance, onInstanceChange } from './lib/app-state.js'
 import { wsClient } from './lib/ws-client.js'
 import { api } from './lib/tauri-api.js'
 import { version as APP_VERSION } from '../package.json'
 import { statusIcon } from './lib/icons.js'
-import { tryShowEngagement } from './components/engagement.js'
 
 // 样式
 import './style/variables.css'
@@ -24,7 +23,6 @@ import './style/debug.css'
 // 初始化主题
 initTheme()
 
-// === 访问密码保护（Web + 桌面端通用） ===
 const isTauri = !!window.__TAURI_INTERNALS__
 
 async function checkAuth() {
@@ -210,22 +208,10 @@ const content = document.getElementById('content')
 const VISIBLE_ROUTES = new Set(['/setup', '/chat-debug'])
 
 async function boot() {
-  // 先注册所有路由，立即渲染 UI（不等后端检测）
-  registerRoute('/dashboard', () => import('./pages/dashboard.js'))
-  registerRoute('/chat', () => import('./pages/chat.js'))
+  // 仅保留初始设置与系统诊断
   registerRoute('/chat-debug', () => import('./pages/chat-debug.js'))
-  registerRoute('/services', () => import('./pages/services.js'))
-  registerRoute('/logs', () => import('./pages/logs.js'))
-  registerRoute('/models', () => import('./pages/models.js'))
-  registerRoute('/agents', () => import('./pages/agents.js'))
-  registerRoute('/gateway', () => import('./pages/gateway.js'))
-  registerRoute('/memory', () => import('./pages/memory.js'))
-  registerRoute('/extensions', () => import('./pages/extensions.js'))
-  registerRoute('/skills', () => import('./pages/skills.js'))
-  registerRoute('/security', () => import('./pages/security.js'))
-  registerRoute('/about', () => import('./pages/about.js'))
   registerRoute('/setup', () => import('./pages/setup.js'))
-  registerRoute('/docker', () => import('./pages/docker.js'))
+  registerRoute('/about', () => import('./pages/about.js'))
 
   setDefaultRoute('/setup')
   const currentHash = window.location.hash.slice(1)
@@ -257,33 +243,7 @@ async function boot() {
     setTimeout(() => splash.remove(), 500)
   }
 
-  // 默认密码提醒横幅
-  if (sessionStorage.getItem('clawpanel_must_change_pw') === '1') {
-    const banner = document.createElement('div')
-    banner.id = 'pw-change-banner'
-    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,0.15)'
-    banner.innerHTML = `
-      <span>${statusIcon('warn', 14)} 当前使用的是系统生成的默认密码，为了安全请尽快修改</span>
-      <a href="#/security" style="color:#fff;background:rgba(255,255,255,0.2);padding:4px 14px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600" onclick="document.getElementById('pw-change-banner').remove();sessionStorage.removeItem('clawpanel_must_change_pw')">前往安全设置</a>
-      <button onclick="this.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;font-size:16px;padding:0 4px;margin-left:4px">✕</button>
-    `
-    document.body.prepend(banner)
-  }
-
-  // Tauri 模式：确保 web session 存在（页面刷新后 cookie 可能丢失），然后加载实例和检测状态
-  const ensureWebSession = isTauri
-    ? api.readPanelConfig().then(cfg => {
-        if (cfg.accessPassword) {
-          return fetch('/__api/auth_login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: cfg.accessPassword }),
-          }).catch(() => {})
-        }
-      }).catch(() => {})
-    : Promise.resolve()
-
-  ensureWebSession.then(() => loadActiveInstance()).then(() => detectOpenclawStatus()).then(() => {
+  loadActiveInstance().then(() => detectOpenclawStatus()).then(() => {
     // 重新渲染侧边栏（检测完成后 isOpenclawReady 状态已更新）
     renderSidebar(sidebar)
     if (!isOpenclawReady()) {
@@ -292,7 +252,6 @@ async function boot() {
     } else {
       setDefaultRoute('/chat-debug')
       if (!window.location.hash || window.location.hash === '#/setup') navigate('/chat-debug')
-      setupGatewayBanner()
       startGatewayPoll()
 
       // 自动连接 WebSocket（如果 Gateway 正在运行）
@@ -304,16 +263,9 @@ async function boot() {
       onGatewayChange((running) => {
         if (running) {
           autoConnectWebSocket()
-          // 正向时机：Gateway 启动成功，延迟弹社区引导
-          setTimeout(tryShowEngagement, 5000)
         } else {
           wsClient.disconnect()
         }
-      })
-
-      // 守护放弃时，弹出恢复选项
-      onGuardianGiveUp(() => {
-        showGuardianRecovery()
       })
 
       // 实例切换时，重连 WebSocket + 重新检测状态
@@ -606,10 +558,6 @@ function startUpdateChecker() {
   _updateCheckTimer = setInterval(checkGlobalUpdate, UPDATE_CHECK_INTERVAL)
 }
 
-// 启动：先检查认证，再加载应用
-;(async () => {
-  const auth = await checkAuth()
-  if (!auth.ok) await showLoginOverlay(auth.defaultPw)
-  boot()
-  startUpdateChecker()
-})()
+// 启动：直接进入应用，不再要求访问密码
+boot()
+startUpdateChecker()

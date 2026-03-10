@@ -22,9 +22,15 @@ mod platform {
 
     const OPENCLAW_PREFIXES: &[&str] = &["ai.openclaw."];
 
-    /// macOS 上 CLI 是否安装（检查 plist 是否存在即可）
+    /// macOS 上直接检测 CLI 是否可执行，不能用 plist 是否存在代替。
+    /// 用户可能已经安装了 openclaw CLI，但尚未运行 onboard/install-daemon。
     pub fn is_cli_installed() -> bool {
-        true // macOS 通过 plist 扫描，不依赖 CLI 检测
+        Command::new("openclaw")
+            .arg("--version")
+            .env("PATH", crate::commands::enhanced_path())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 
     pub fn current_uid() -> Result<u32, String> {
@@ -38,7 +44,9 @@ mod platform {
             .map_err(|e| format!("解析 UID 失败: {e}"))
     }
 
-    /// 动态扫描 LaunchAgents 目录，只返回 OpenClaw 核心服务
+    /// 动态扫描 LaunchAgents 目录，只返回 OpenClaw 核心服务。
+    /// 即使尚未生成 LaunchAgent，也保底返回 gateway 标签，避免前端把“CLI 已安装但未初始化”
+    /// 误判成“CLI 未安装”。
     pub fn scan_service_labels() -> Vec<String> {
         let home = dirs::home_dir().unwrap_or_default();
         let agents_dir = home.join("Library/LaunchAgents");
@@ -56,7 +64,11 @@ mod platform {
                 }
             }
         }
+        if !labels.iter().any(|l| l == "ai.openclaw.gateway") {
+            labels.push("ai.openclaw.gateway".to_string());
+        }
         labels.sort();
+        labels.dedup();
         labels
     }
 

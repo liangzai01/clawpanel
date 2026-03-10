@@ -8,7 +8,7 @@ const isTauri = !!window.__TAURI_INTERNALS__
 // 写操作不应静默回退 mock（否则会“假成功”）
 const NO_MOCK_CMDS = new Set([
   'start_service', 'stop_service', 'restart_service',
-  'upgrade_openclaw', 'install_gateway', 'uninstall_gateway',
+  'upgrade_openclaw', 'install_gateway', 'uninstall_gateway', 'purge_openclaw',
   'write_openclaw_config', 'write_mcp_config',
   'create_backup', 'restore_backup', 'delete_backup',
   'write_memory_file', 'delete_memory_file',
@@ -253,13 +253,15 @@ function mockInvoke(cmd, args) {
     upgrade_openclaw: () => '升级成功，当前版本: 2026.2.26-zh.3 (mock)',
     install_gateway: () => 'Gateway 服务已安装 (mock)',
     uninstall_gateway: () => 'Gateway 服务已卸载 (mock)',
+    purge_openclaw: () => 'OpenClaw 已彻底卸载 (mock)',
     get_npm_registry: () => 'https://registry.npmmirror.com',
     set_npm_registry: () => true,
     test_model: ({ modelId }) => `模型 ${modelId} 连通正常 (mock)`,
     list_remote_models: () => ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o3-mini', 'dall-e-3', 'text-embedding-3-small'],
     patch_model_vision: () => false,
     check_panel_update: () => ({ latest: '0.2.0', url: 'https://github.com/qingchencloud/clawpanel/releases' }),
-    write_env_file: () => true,
+  write_env_file: () => true,
+  launch_openclaw_onboard_admin: () => { throw new Error('当前模式不支持自动打开终端') },
     list_backups: () => [
       { name: 'openclaw-20260226-143000.json', size: 8542, created_at: 1740577800 },
       { name: 'openclaw-20260225-100000.json', size: 8210, created_at: 1740474000 },
@@ -303,6 +305,7 @@ export const api = {
   listOpenclawVersions: (source = 'chinese') => invoke('list_openclaw_versions', { source }),
   upgradeOpenclaw: (source = 'chinese', version = null) => invoke('upgrade_openclaw', { source, version }),
   uninstallOpenclaw: (cleanConfig = false) => invoke('uninstall_openclaw', { cleanConfig }),
+  purgeOpenclaw: () => invoke('purge_openclaw'),
   installGateway: () => invoke('install_gateway'),
   uninstallGateway: () => invoke('uninstall_gateway'),
   getNpmRegistry: () => cachedInvoke('get_npm_registry', {}, 30000),
@@ -344,6 +347,7 @@ export const api = {
   patchModelVision: () => invoke('patch_model_vision'),
   checkPanelUpdate: () => invoke('check_panel_update'),
   writeEnvFile: (path, config) => invoke('write_env_file', { path, config }),
+  launchOpenclawOnboardAdmin: () => invoke('launch_openclaw_onboard_admin'),
 
   // 备份管理
   listBackups: () => cachedInvoke('list_backups'),

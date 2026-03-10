@@ -14,10 +14,10 @@ export async function render() {
 
   page.innerHTML = `
     <div class="page-header" style="display:flex;align-items:center;gap:16px">
-      <img src="/images/logo-brand.png" alt="ClawPanel" style="height:48px;width:auto">
+      <img src="/images/openclaw-logo-text.png" alt="OpenClaw" style="height:48px;width:auto">
       <div>
-        <h1 class="page-title" style="margin:0">ClawPanel</h1>
-        <p class="page-desc" style="margin:0">OpenClaw 可视化管理面板</p>
+        <h1 class="page-title" style="margin:0">OpenClaw</h1>
+        <p class="page-desc" style="margin:0">OpenClaw CLI 一键安装</p>
       </div>
     </div>
     <div class="stat-cards" id="version-cards">
@@ -58,7 +58,7 @@ async function loadData(page) {
 
     cards.innerHTML = `
       <div class="stat-card">
-        <div class="stat-card-header"><span class="stat-card-label">ClawPanel</span></div>
+        <div class="stat-card-header"><span class="stat-card-label">OpenClaw</span></div>
         <div class="stat-card-value">${panelVersion}</div>
         <div class="stat-card-meta" id="panel-update-meta" style="display:flex;align-items:center;gap:8px">${panelUpdateHtml}</div>
       </div>
@@ -73,7 +73,8 @@ async function loadData(page) {
           <button class="btn btn-${isInstalled ? 'secondary' : 'primary'} btn-sm" id="btn-version-mgmt" style="${btnSm}">
             ${isInstalled ? '切换版本' : '安装 OpenClaw'}
           </button>
-          ${isInstalled ? `<button class="btn btn-secondary btn-sm" id="btn-uninstall" style="${btnSm};color:var(--error)">卸载</button>` : ''}
+          ${isInstalled ? `<button class="btn btn-secondary btn-sm" id="btn-uninstall" style="${btnSm};color:var(--error)">卸载</button>
+          <button class="btn btn-secondary btn-sm" id="btn-purge" style="${btnSm};color:var(--error);border-color:var(--error)">彻底卸载</button>` : ''}
         </div>
       </div>
       <div class="stat-card">
@@ -117,6 +118,34 @@ async function loadData(page) {
           modal.setDone(typeof msg === 'string' ? msg : '卸载完成')
         } catch (e) {
           modal.setError('卸载失败: ' + (e?.message || e))
+        } finally {
+          unlistenLog?.()
+          unlistenProgress?.()
+        }
+      }
+    }
+
+    const purgeBtn = cards.querySelector('#btn-purge')
+    if (purgeBtn) {
+      purgeBtn.onclick = async () => {
+        const confirmed = await showConfirm('确定要彻底卸载 OpenClaw 吗？\n\n将执行 openclaw uninstall --all --yes，并额外清理 Gateway、LaunchAgent/守护进程、残留配置与相关进程。\n此操作不可撤销。')
+        if (!confirmed) return
+        const modal = showUpgradeModal('彻底卸载 OpenClaw')
+        modal.onClose(() => loadData(page))
+        modal.appendLog('开始彻底卸载 OpenClaw...')
+        let unlistenLog, unlistenProgress
+        try {
+          if (window.__TAURI_INTERNALS__) {
+            try {
+              const { listen } = await import('@tauri-apps/api/event')
+              unlistenLog = await listen('upgrade-log', (e) => modal.appendLog(e.payload))
+              unlistenProgress = await listen('upgrade-progress', (e) => modal.setProgress(e.payload))
+            } catch {}
+          }
+          const msg = await api.purgeOpenclaw()
+          modal.setDone(typeof msg === 'string' ? msg : '彻底卸载完成')
+        } catch (e) {
+          modal.setError('彻底卸载失败: ' + (e?.message || e))
         } finally {
           unlistenLog?.()
           unlistenProgress?.()
@@ -420,7 +449,7 @@ const PROJECTS = [
     url: 'https://github.com/qingchencloud/cftunnel',
   },
   {
-    name: 'ClawPanel',
+    name: 'OpenClaw',
     desc: 'OpenClaw 可视化管理面板，Tauri v2 桌面应用',
     url: 'https://github.com/qingchencloud/clawpanel',
   },

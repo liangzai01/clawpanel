@@ -127,16 +127,6 @@ function parseCookies(req) {
 }
 
 function isAuthenticated(req) {
-  const pw = getAccessPassword()
-  if (!pw) return true // 未设密码，放行
-  const cookies = parseCookies(req)
-  const token = cookies.clawpanel_session
-  if (!token) return false
-  const session = _sessions.get(token)
-  if (!session || Date.now() > session.expires) {
-    _sessions.delete(token)
-    return false
-  }
   return true
 }
 
@@ -1795,6 +1785,41 @@ const handlers = {
     return cleanConfig ? 'OpenClaw 已完全卸载（包括配置文件）' : 'OpenClaw 已卸载（配置文件保留）'
   },
 
+  purge_openclaw() {
+    if (isMac) {
+      const uid = getUid()
+      try {
+        const agentsDir = path.join(homedir(), 'Library/LaunchAgents')
+        if (fs.existsSync(agentsDir)) {
+          for (const name of fs.readdirSync(agentsDir)) {
+            if (!/^ai\.openclaw\..+\.plist$/.test(name)) continue
+            const label = name.replace(/\.plist$/, '')
+            try { execSync(`launchctl bootout gui/${uid}/${label} 2>&1`) } catch {}
+            try { fs.unlinkSync(path.join(agentsDir, name)) } catch {}
+          }
+        }
+      } catch {}
+      try { execSync(`pkill -f "openclaw.*gateway" 2>/dev/null`) } catch {}
+      try { execSync(`pkill -f "openclaw.*node" 2>/dev/null`) } catch {}
+      try { execSync(`pkill -f "guardian" 2>/dev/null`) } catch {}
+    } else if (isWindows) {
+      try { execSync('taskkill /f /t /im node.exe 2>&1', { windowsHide: true }) } catch {}
+      try { execSync('taskkill /f /t /fi "WINDOWTITLE eq OpenClaw Gateway" 2>&1', { windowsHide: true }) } catch {}
+    } else {
+      try { execSync(`pkill -f "openclaw.*gateway" 2>/dev/null`) } catch {}
+      try { execSync(`pkill -f "openclaw.*node" 2>/dev/null`) } catch {}
+      try { execSync(`pkill -f "guardian" 2>/dev/null`) } catch {}
+    }
+
+    try { execSync('openclaw uninstall --all --yes 2>&1', { timeout: 120000, windowsHide: true }) } catch {}
+    try { execSync(`${isWindows ? 'npm.cmd' : 'npm'} uninstall -g openclaw 2>&1`, { timeout: 60000, windowsHide: true }) } catch {}
+    try { execSync(`${isWindows ? 'npm.cmd' : 'npm'} uninstall -g @qingchencloud/openclaw-zh 2>&1`, { timeout: 60000, windowsHide: true }) } catch {}
+    if (fs.existsSync(OPENCLAW_DIR)) {
+      try { fs.rmSync(OPENCLAW_DIR, { recursive: true, force: true }) } catch {}
+    }
+    return 'OpenClaw 已彻底卸载（CLI、Gateway、守护进程、LaunchAgent、配置目录）'
+  },
+
   uninstall_gateway() {
     if (isMac) {
       const uid = getUid()
@@ -2495,8 +2520,7 @@ const handlers = {
 
   // === 访问密码认证 ===
   auth_check() {
-    const pw = getAccessPassword()
-    return { required: !!pw, authenticated: false /* 由中间件覆写 */ }
+    return { required: false, authenticated: true, mustChangePassword: false }
   },
   auth_login() { throw new Error('由中间件处理') },
   auth_logout() { throw new Error('由中间件处理') },
@@ -2555,19 +2579,9 @@ const handlers = {
 // 初始化：密码检测 + 启动日志 + 定时清理
 function _initApi() {
   const cfg = readPanelConfig()
-  if (!cfg.accessPassword && !cfg.ignoreRisk) {
-    cfg.accessPassword = '123456'
-    cfg.mustChangePassword = true
-    if (!fs.existsSync(OPENCLAW_DIR)) fs.mkdirSync(OPENCLAW_DIR, { recursive: true })
-    fs.writeFileSync(PANEL_CONFIG_PATH, JSON.stringify(cfg, null, 2))
-    invalidateConfigCache()
-    console.log('[api] ⚠️  首次启动，默认访问密码: 123456')
-    console.log('[api] ⚠️  首次登录后将强制要求修改密码')
-  }
-  const pw = getAccessPassword()
   console.log('[api] API 已启动，配置目录:', OPENCLAW_DIR)
   console.log('[api] 平台:', isMac ? 'macOS' : process.platform)
-  console.log('[api] 访问密码:', pw ? '已设置' : (cfg.ignoreRisk ? '无视风险模式（无密码）' : '未设置'))
+  console.log('[api] 访问密码: 已关闭')
 
   // 定时清理过期 session 和登录限速记录（每 10 分钟）
   setInterval(() => {
@@ -2589,50 +2603,14 @@ async function _apiMiddleware(req, res, next) {
 
   // --- 认证特殊处理 ---
   if (cmd === 'auth_check') {
-    const cfg = readPanelConfig()
-    const pw = cfg.accessPassword || ''
-    const isDefault = pw === '123456'
-    const resp = {
-      required: !!pw,
-      authenticated: !pw || isAuthenticated(req),
-      mustChangePassword: isDefault,
-    }
-    if (isDefault) resp.defaultPassword = '123456'
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify(resp))
+    res.end(JSON.stringify({ required: false, authenticated: true, mustChangePassword: false }))
     return
   }
 
   if (cmd === 'auth_login') {
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || ''
-    const rateLimitErr = checkLoginRateLimit(clientIp)
-    if (rateLimitErr) {
-      res.statusCode = 429
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: rateLimitErr }))
-      return
-    }
-    const args = await readBody(req)
-    const cfg = readPanelConfig()
-    const pw = cfg.accessPassword || ''
-    if (!pw) {
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ success: true }))
-      return
-    }
-    if (args.password !== pw) {
-      recordLoginFailure(clientIp)
-      res.statusCode = 401
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: '密码错误' }))
-      return
-    }
-    clearLoginAttempts(clientIp)
-    const token = crypto.randomUUID()
-    _sessions.set(token, { expires: Date.now() + SESSION_TTL })
-    res.setHeader('Set-Cookie', `clawpanel_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`)
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ success: true, mustChangePassword: !!cfg.mustChangePassword }))
+    res.end(JSON.stringify({ success: true, mustChangePassword: false }))
     return
   }
 
@@ -2680,24 +2658,8 @@ async function _apiMiddleware(req, res, next) {
   }
 
   if (cmd === 'auth_status') {
-    const cfg = readPanelConfig()
-    if (cfg.accessPassword && !isAuthenticated(req)) {
-      res.statusCode = 401
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: '未登录' }))
-      return
-    }
-    const isDefault = cfg.accessPassword === '123456'
-    const result = {
-      hasPassword: !!cfg.accessPassword,
-      mustChangePassword: isDefault,
-      ignoreRisk: !!cfg.ignoreRisk,
-    }
-    if (isDefault) {
-      result.defaultPassword = '123456'
-    }
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify(result))
+    res.end(JSON.stringify({ hasPassword: false, mustChangePassword: false, ignoreRisk: true }))
     return
   }
 
@@ -2734,13 +2696,7 @@ async function _apiMiddleware(req, res, next) {
     return
   }
 
-  // --- 认证中间件：非豁免接口必须校验 ---
-  if (!isAuthenticated(req)) {
-    res.statusCode = 401
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: '未登录', code: 'AUTH_REQUIRED' }))
-    return
-  }
+  // 密码保护已禁用，不再拦截接口
 
   // --- 实例代理：非 ALWAYS_LOCAL 命令，活跃实例非本机时代理转发 ---
   const activeInst = getActiveInstance()

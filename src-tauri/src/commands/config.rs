@@ -49,6 +49,118 @@ fn backups_dir() -> PathBuf {
     super::openclaw_dir().join("backups")
 }
 
+#[cfg(target_os = "macos")]
+fn cleanup_openclaw_launchagents(logs: &mut Vec<String>) {
+    let uid = get_uid().unwrap_or(501);
+    let home = dirs::home_dir().unwrap_or_default();
+    let agents_dir = home.join("Library/LaunchAgents");
+
+    if let Ok(entries) = fs::read_dir(&agents_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !name.starts_with("ai.openclaw.") || !name.ends_with(".plist") {
+                continue;
+            }
+            let label = name.trim_end_matches(".plist");
+            let target = format!("gui/{uid}/{label}");
+            let _ = Command::new("launchctl").args(["bootout", &target]).output();
+            if fs::remove_file(&path).is_ok() {
+                logs.push(format!("已删除 LaunchAgent: {name}"));
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_openclaw_processes(logs: &mut Vec<String>) {
+    let patterns = [
+        ["taskkill", "/f", "/t", "/im", "node.exe"],
+        ["taskkill", "/f", "/t", "/fi", "WINDOWTITLE eq OpenClaw Gateway"],
+    ];
+
+    for cmd in patterns {
+        let _ = Command::new(cmd[0])
+            .args(&cmd[1..])
+            .creation_flags(0x08000000)
+            .output();
+    }
+    logs.push("已尝试结束 OpenClaw / Gateway 残留进程".into());
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn cleanup_openclaw_processes(logs: &mut Vec<String>) {
+    let patterns = [
+        "openclaw.*gateway",
+        "openclaw.*node",
+        "ai.openclaw",
+        "guardian",
+    ];
+    for pattern in patterns {
+        let _ = Command::new("pkill").args(["-f", pattern]).output();
+    }
+    logs.push("已尝试结束 OpenClaw / Gateway / guardian 残留进程".into());
+}
+
+#[cfg(target_os = "windows")]
+fn windows_powershell_path() -> String {
+    std::env::var("SystemRoot")
+        .map(|root| format!(r"{}\System32\WindowsPowerShell\v1.0\powershell.exe", root))
+        .unwrap_or_else(|_| "powershell.exe".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_openclaw_cli_path() -> Result<String, String> {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let cmd_path = std::path::Path::new(&appdata)
+            .join("npm")
+            .join("openclaw.cmd");
+        if cmd_path.exists() {
+            return Ok(cmd_path.to_string_lossy().to_string());
+        }
+    }
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut cmd = Command::new("cmd");
+    cmd.args(["/c", "where", "openclaw"]);
+    cmd.env("PATH", super::enhanced_path());
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let out = cmd.output().map_err(|e| format!("查找 openclaw 失败: {e}"))?;
+    if !out.status.success() {
+        return Err("未找到 openclaw CLI，请安装完成后重启 ClawPanel 再试".into());
+    }
+
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .ok_or_else(|| "未找到 openclaw CLI 可执行文件".into())
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_openclaw_cli_path() -> Result<String, String> {
+    let out = Command::new("which")
+        .arg("openclaw")
+        .env("PATH", super::enhanced_path())
+        .output()
+        .map_err(|e| format!("查找 openclaw 失败: {e}"))?;
+
+    if !out.status.success() {
+        return Err("未找到 openclaw CLI，请确认已安装并重启 ClawPanel 再试".into());
+    }
+
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .ok_or_else(|| "未找到 openclaw CLI 可执行文件".into())
+}
+
 #[tauri::command]
 pub fn read_openclaw_config() -> Result<Value, String> {
     let path = super::openclaw_dir().join("openclaw.json");
@@ -665,38 +777,8 @@ pub async fn upgrade_openclaw(
         let _ = npm_command().args(["uninstall", "-g", old_pkg]).output();
     }
 
-    // 切换源后重装 Gateway 服务
     if need_uninstall_old {
-        let _ = app.emit("upgrade-log", "正在重装 Gateway 服务（更新启动路径）...");
-        // 先停掉旧的
-        #[cfg(target_os = "macos")]
-        {
-            let uid = get_uid().unwrap_or(501);
-            let _ = Command::new("launchctl")
-                .args(["bootout", &format!("gui/{uid}/ai.openclaw.gateway")])
-                .output();
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = openclaw_command().args(["gateway", "stop"]).output();
-        }
-        // 重新安装
-        use crate::utils::openclaw_command_async;
-        let gw_out = openclaw_command_async()
-            .args(["gateway", "install"])
-            .output()
-            .await;
-        match gw_out {
-            Ok(o) if o.status.success() => {
-                let _ = app.emit("upgrade-log", "Gateway 服务已重装");
-            }
-            _ => {
-                let _ = app.emit(
-                    "upgrade-log",
-                    "⚠️ Gateway 重装失败，请手动执行 openclaw gateway install",
-                );
-            }
-        }
+        let _ = app.emit("upgrade-log", "已清理旧版本 npm 包，跳过 Gateway 服务安装");
     }
 
     let new_ver = get_local_version().await.unwrap_or_else(|| "未知".into());
@@ -818,6 +900,117 @@ pub async fn uninstall_openclaw(
     Ok(msg.into())
 }
 
+#[tauri::command]
+pub async fn purge_openclaw(app: tauri::AppHandle) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+    use tauri::Emitter;
+
+    let _ = app.emit("upgrade-log", "开始彻底卸载 OpenClaw...");
+    let _ = app.emit("upgrade-progress", 5);
+
+    let mut cleanup_logs = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    cleanup_openclaw_launchagents(&mut cleanup_logs);
+
+    cleanup_openclaw_processes(&mut cleanup_logs);
+
+    for line in cleanup_logs {
+        let _ = app.emit("upgrade-log", line);
+    }
+
+    let _ = app.emit("upgrade-log", "$ openclaw uninstall --all --yes");
+    let _ = app.emit("upgrade-progress", 20);
+
+    let mut child = crate::utils::openclaw_command()
+        .args(["uninstall", "--all", "--yes"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("执行彻底卸载命令失败: {e}"))?;
+
+    let stderr = child.stderr.take();
+    let stdout = child.stdout.take();
+
+    let app2 = app.clone();
+    let stderr_lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let stderr_lines2 = stderr_lines.clone();
+    let handle = std::thread::spawn(move || {
+        if let Some(pipe) = stderr {
+            for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                let _ = app2.emit("upgrade-log", &line);
+                stderr_lines2.lock().unwrap().push(line);
+            }
+        }
+    });
+
+    if let Some(pipe) = stdout {
+        for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+            let _ = app.emit("upgrade-log", &line);
+        }
+    }
+
+    let _ = handle.join();
+    let _ = app.emit("upgrade-progress", 70);
+
+    let status = child.wait().map_err(|e| format!("等待彻底卸载进程失败: {e}"))?;
+    if !status.success() {
+        let code = status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let tail = stderr_lines
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .take(15)
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("彻底卸载失败，exit code: {code}\n{tail}"));
+    }
+
+    let _ = app.emit("upgrade-log", "执行兜底清理...");
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut logs = Vec::new();
+        cleanup_openclaw_launchagents(&mut logs);
+        cleanup_openclaw_processes(&mut logs);
+        for line in logs {
+            let _ = app.emit("upgrade-log", line);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut logs = Vec::new();
+        cleanup_openclaw_processes(&mut logs);
+        for line in logs {
+            let _ = app.emit("upgrade-log", line);
+        }
+    }
+
+    let config_dir = super::openclaw_dir();
+    if config_dir.exists() {
+        match fs::remove_dir_all(&config_dir) {
+            Ok(_) => {
+                let _ = app.emit("upgrade-log", format!("已删除配置目录: {}", config_dir.display()));
+            }
+            Err(e) => {
+                let _ = app.emit("upgrade-log", format!("⚠️ 删除配置目录失败: {e}"));
+            }
+        }
+    }
+
+    let _ = app.emit("upgrade-progress", 100);
+    let msg = "✅ OpenClaw 已彻底卸载（CLI、Gateway、守护进程、LaunchAgent、配置目录）";
+    let _ = app.emit("upgrade-log", msg);
+    Ok(msg.into())
+}
+
 /// 自动初始化配置文件（CLI 已装但 openclaw.json 不存在时）
 #[tauri::command]
 pub fn init_openclaw_config() -> Result<Value, String> {
@@ -892,6 +1085,57 @@ pub fn check_node() -> Result<Value, String> {
         }
     }
     Ok(Value::Object(result))
+}
+
+#[tauri::command]
+pub fn launch_openclaw_onboard_admin() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let cli_path = resolve_openclaw_cli_path()?;
+        let ps_path = windows_powershell_path();
+        let ps_escaped = ps_path.replace('\'', "''");
+        let cli_escaped = cli_path.replace('\'', "''");
+        let script = format!(
+            "Start-Process -FilePath '{ps_escaped}' -Verb RunAs -ArgumentList @('-NoExit','-ExecutionPolicy','Bypass','-Command','& ''{cli_escaped}'' onboard --install-daemon')"
+        );
+
+        Command::new(&ps_path)
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+            .env("PATH", super::enhanced_path())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("打开管理员命令行失败: {e}"))?;
+
+        Ok("已请求打开管理员 PowerShell 并运行初始化向导".into())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let cli_path = resolve_openclaw_cli_path()?;
+        let shell_escaped = cli_path.replace('\'', "'\\''");
+        let command_line = format!("sudo '{}' onboard --install-daemon", shell_escaped);
+        let applescript_command = command_line
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+
+        Command::new("osascript")
+            .args([
+                "-e",
+                &format!("tell application \"Terminal\" to do script \"{}\"", applescript_command),
+                "-e",
+                "tell application \"Terminal\" to activate",
+            ])
+            .spawn()
+            .map_err(|e| format!("打开 Terminal 失败: {e}"))?;
+
+        Ok("已打开 Terminal，并预填 sudo 初始化命令".into())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        Err("当前平台不支持自动打开终端，请手动执行 openclaw onboard --install-daemon".into())
+    }
 }
 
 /// 在指定路径下检测 node 是否存在

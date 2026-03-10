@@ -1,6 +1,6 @@
 /**
  * 初始设置页面 — openclaw 未安装时的引导
- * 自动检测环境 → 版本选择 → 一键安装 → 自动跳转
+ * 自动检测环境 → 版本选择 → 一键安装 → 初始化向导
  */
 import { api } from '../lib/tauri-api.js'
 import { showUpgradeModal } from '../components/modal.js'
@@ -10,6 +10,52 @@ import { diagnoseInstallError } from '../lib/error-diagnosis.js'
 import { icon, statusIcon } from '../lib/icons.js'
 import { navigate } from '../router.js'
 
+function isMacClient() {
+  return isMacPlatform() || navigator.platform?.startsWith('Mac') || navigator.userAgent?.includes('Macintosh')
+}
+
+function isWindowsClient() {
+  return /Windows/i.test(navigator.userAgent || navigator.platform || '')
+}
+
+function getOnboardCommand() {
+  return isMacClient() ? 'sudo openclaw onboard --install-daemon' : 'openclaw onboard --install-daemon'
+}
+
+function getOnboardPlatformText() {
+  if (isMacClient()) {
+    return {
+      openLabel: '终端',
+      openAction: '打开终端并预填 sudo 命令',
+      openHint: '可以直接从这里打开 Terminal，并预填 sudo 命令。',
+      success: '已打开 Terminal，请在终端中输入系统密码继续',
+      successCopied: '已打开 Terminal，命令也已复制；请在终端中输入系统密码继续',
+      fallback: '自动打开失败，请在 Terminal 中粘贴执行',
+      installDone: '安装完成。关闭后可在页面中的“初始化向导”卡片继续打开 Terminal，并执行',
+    }
+  }
+  if (isWindowsClient()) {
+    return {
+      openLabel: '管理员命令行',
+      openAction: '打开管理员命令行',
+      openHint: '可以直接从这里打开管理员命令行。',
+      success: '已打开管理员 PowerShell',
+      successCopied: '已打开管理员 PowerShell，命令也已复制',
+      fallback: '自动打开失败，请在管理员命令行中粘贴执行',
+      installDone: '安装完成。关闭后可在页面中的“初始化向导”卡片继续打开管理员命令行，并执行',
+    }
+  }
+  return {
+    openLabel: '终端',
+    openAction: '尝试打开初始化',
+    openHint: '如果当前环境支持自动打开终端，可以直接从这里继续。',
+    success: '已打开终端',
+    successCopied: '已打开终端，命令也已复制',
+    fallback: '自动打开失败，请在终端中粘贴执行',
+    installDone: '安装完成。关闭后可在页面中的“初始化向导”卡片继续执行',
+  }
+}
+
 export async function render() {
   const page = document.createElement('div')
   page.className = 'page'
@@ -17,11 +63,10 @@ export async function render() {
   page.innerHTML = `
     <div style="max-width:560px;margin:48px auto;text-align:center">
       <div style="margin-bottom:var(--space-lg)">
-        <img src="/images/logo-brand.png" alt="ClawPanel" style="max-width:160px;width:100%;height:auto">
+        <img src="/images/openclaw-logo-text.png" alt="OpenClaw" style="max-width:160px;width:100%;height:auto">
       </div>
-      <h1 style="font-size:var(--font-size-xl);margin-bottom:var(--space-xs)">欢迎使用 ClawPanel</h1>
       <p style="color:var(--text-secondary);margin-bottom:var(--space-xl);line-height:1.6">
-        OpenClaw AI Agent 框架的桌面管理面板
+        OpenClaw CLI 一键安装
       </p>
 
       <div id="setup-steps"></div>
@@ -58,20 +103,7 @@ async function runDetect(page) {
   const cliOk = clawRes.status === 'fulfilled'
     && clawRes.value?.length > 0
     && clawRes.value[0]?.cli_installed !== false
-  let config = configRes.status === 'fulfilled' ? configRes.value : { installed: false }
-
-  // CLI 已装但配置缺失 → 自动创建默认配置
-  if (cliOk && !config.installed) {
-    try {
-      const initResult = await api.initOpenclawConfig()
-      if (initResult?.created) {
-        // 重新检测配置
-        config = await api.checkInstallation()
-      }
-    } catch (e) {
-      console.warn('[setup] 自动初始化配置失败:', e)
-    }
-  }
+  const config = configRes.status === 'fulfilled' ? configRes.value : { installed: false }
 
   renderSteps(page, { node, cliOk, config })
 }
@@ -130,23 +162,22 @@ function renderSteps(page, { node, cliOk, config }) {
         ${stepIcon(cliOk)} OpenClaw CLI
       </div>
       ${cliOk
-        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">CLI 可用</p>`
+        ? `<p style="color:var(--success);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">CLI npm 包已可用</p>${renderOnboardActionCard(true)}`
         : renderInstallSection()
       }
     </div>
   `
-  // 第三步：配置文件
+  // 第三步：初始化向导
   html += `
     <div class="config-section" style="text-align:left;${cliOk ? '' : 'opacity:0.4;pointer-events:none'}">
       <div class="config-section-title" style="display:flex;align-items:center;gap:4px">
-        ${stepIcon(config.installed)} 配置文件
+        ${stepIcon(config.installed)} 初始化向导
       </div>
       ${config.installed
-        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">配置文件位于 ${config.path || ''}</p>`
-        : `<p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">
-            配置文件不存在，点击下方按钮自动创建默认配置。
-          </p>
-          <button class="btn btn-primary btn-sm" id="btn-init-config">一键初始化配置</button>`
+        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">已完成初始化，配置文件位于 ${config.path || ''}</p>`
+        : `<p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:0">
+            还没有完成初始化。请在上方卡片中打开终端，或复制命令后手动执行 <code>${getOnboardCommand()}</code>。
+          </p>`
       }
     </div>
   `
@@ -161,7 +192,7 @@ function renderSteps(page, { node, cliOk, config }) {
   }
 
   stepsEl.innerHTML = html
-  bindEvents(page, nodeOk)
+  bindEvents(page, { nodeOk, cliOk })
 }
 
 function renderInstallSection() {
@@ -222,7 +253,7 @@ function renderInstallSection() {
 
   return `
     <p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">
-      选择版本后点击安装，将自动执行 npm 全局安装。
+      选择版本后点击安装，只会安装 OpenClaw CLI npm 包，不会安装 Gateway 服务。
     </p>
     <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
       <label class="setup-source-option" style="flex:1;cursor:pointer">
@@ -249,35 +280,79 @@ function renderInstallSection() {
       </select>
     </div>
     <button class="btn btn-primary btn-sm" id="btn-install">一键安装</button>
+    ${renderOnboardActionCard(false)}
     ${envHint}
   `
 }
 
-function bindEvents(page, nodeOk) {
+function renderOnboardActionCard(cliOk) {
+  const isMac = isMacClient()
+  const isWin = isWindowsClient()
+  const canAutoLaunch = !!window.__TAURI_INTERNALS__ && (isMac || isWin)
+  const onboardCommand = getOnboardCommand()
+  const platformText = getOnboardPlatformText()
+
+  return `
+    <div style="margin-top:var(--space-md);padding:12px;border:1px solid var(--border-primary);border-radius:var(--radius-md);background:var(--bg-tertiary)">
+      <div style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text-primary);margin-bottom:6px">
+        ${icon('terminal', 14)}
+        <span>初始化向导</span>
+      </div>
+      <div style="font-size:var(--font-size-sm);color:var(--text-secondary);line-height:1.7;margin-bottom:10px">
+        安装完成后，请执行 <code>${onboardCommand}</code> 完成初始化。
+        ${canAutoLaunch ? platformText.openHint : '如果当前环境不支持自动打开，请复制命令后手动执行。'}
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:var(--radius-sm);padding:8px 10px;font-family:monospace;font-size:12px;color:var(--text-primary);word-break:break-all;margin-bottom:10px">${onboardCommand}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm btn-open-onboard" ${cliOk ? '' : 'disabled'}>${canAutoLaunch ? platformText.openAction : '尝试打开初始化'}</button>
+        <button class="btn btn-secondary btn-sm btn-copy-onboard" ${cliOk ? '' : 'disabled'}>复制命令</button>
+      </div>
+      ${cliOk
+        ? '<div class="form-hint" style="margin-top:8px">完成后点击页面底部的“重新检测”更新状态。</div>'
+        : '<div class="form-hint" style="margin-top:8px">请先完成上方 OpenClaw CLI 安装，随后这里的按钮会自动可用。</div>'
+      }
+    </div>
+  `
+}
+
+async function copyOnboardCommand() {
+  const onboardCommand = getOnboardCommand()
+  try {
+    await navigator.clipboard.writeText(onboardCommand)
+    toast('初始化命令已复制到剪贴板', 'success')
+    return true
+  } catch {
+    toast(`请手动复制并执行：${onboardCommand}`, 'warning')
+    return false
+  }
+}
+
+async function openOnboardCommand() {
+  const copied = await copyOnboardCommand()
+  const platformText = getOnboardPlatformText()
+  try {
+    await api.launchOpenclawOnboardAdmin()
+    toast(copied ? platformText.successCopied : platformText.success, 'success')
+  } catch (e) {
+    console.warn('[setup] launchOpenclawOnboardAdmin failed:', e)
+    toast(copied ? platformText.fallback : `请手动执行：${getOnboardCommand()}`, 'warning')
+  }
+}
+
+function bindEvents(page, { nodeOk, cliOk }) {
   // 进入面板
   page.querySelector('#btn-enter')?.addEventListener('click', () => {
-    window.location.hash = '/chat-debug'
+    navigate('/chat-debug')
   })
 
-  // 一键初始化配置
-  page.querySelector('#btn-init-config')?.addEventListener('click', async () => {
-    const btn = page.querySelector('#btn-init-config')
-    btn.disabled = true
-    btn.textContent = '初始化中...'
-    try {
-      const result = await api.initOpenclawConfig()
-      if (result?.created) {
-        toast('配置文件已创建', 'success')
-      } else {
-        toast(result?.message || '配置文件已存在', 'info')
-      }
-      setTimeout(() => runDetect(page), 500)
-    } catch (e) {
-      toast('初始化失败: ' + e, 'error')
-      btn.disabled = false
-      btn.textContent = '一键初始化配置'
-    }
-  })
+  if (cliOk) {
+    page.querySelectorAll('.btn-copy-onboard').forEach((btn) => {
+      btn.addEventListener('click', () => copyOnboardCommand())
+    })
+    page.querySelectorAll('.btn-open-onboard').forEach((btn) => {
+      btn.addEventListener('click', () => openOnboardCommand())
+    })
+  }
 
   // 自动扫描 Node.js
   page.querySelector('#btn-scan-node')?.addEventListener('click', async () => {
@@ -341,9 +416,7 @@ function bindEvents(page, nodeOk) {
 
   // 一键安装
   const installBtn = page.querySelector('#btn-install')
-  if (!installBtn || !nodeOk) return
-
-  installBtn.addEventListener('click', async () => {
+  if (installBtn && nodeOk) installBtn.addEventListener('click', async () => {
     const source = page.querySelector('input[name="install-source"]:checked')?.value || 'chinese'
     const registry = page.querySelector('#registry-select')?.value
     const modal = showUpgradeModal()
@@ -369,56 +442,11 @@ function bindEvents(page, nodeOk) {
 
       const msg = await api.upgradeOpenclaw(source)
       modal.setDone(msg)
+      modal.appendHtmlLog(`${icon('terminal', 14)} ${getOnboardPlatformText().installDone} <code>${getOnboardCommand()}</code>`)
 
-      // 安装成功后自动安装 Gateway
-      modal.appendLog('正在安装 Gateway 服务...')
-      try {
-        await api.installGateway()
-        modal.appendHtmlLog(`${statusIcon('ok', 14)} Gateway 服务已安装`)
-      } catch (e) {
-        modal.appendHtmlLog(`${statusIcon('warn', 14)} Gateway 安装失败: ${e}`)
-      }
-
-      // 确保 openclaw.json 有关键默认值，否则 Gateway 启动不了或功能受限
-      try {
-        const config = await api.readOpenclawConfig()
-        if (config) {
-          let patched = false
-          if (!config.gateway) config.gateway = {}
-          if (!config.gateway.mode) {
-            config.gateway.mode = 'local'
-            patched = true
-            modal.appendHtmlLog(`${statusIcon('ok', 14)} 已设置 Gateway 运行模式为 local`)
-          }
-          if (!config.tools || config.tools.profile !== 'full') {
-            config.tools = { profile: 'full', sessions: { visibility: 'all' }, ...(config.tools || {}) }
-            config.tools.profile = 'full'
-            if (!config.tools.sessions) config.tools.sessions = {}
-            config.tools.sessions.visibility = 'all'
-            patched = true
-            modal.appendHtmlLog(`${statusIcon('ok', 14)} 已开启 Agent 工具全部权限`)
-          }
-          if (patched) await api.writeOpenclawConfig(config)
-        }
-      } catch (e) {
-        modal.appendHtmlLog(`${statusIcon('warn', 14)} 自动配置失败: ${e}`)
-      }
-
-      toast('OpenClaw 安装成功', 'success')
-      // 安装日志弹窗关闭后，引导用户配置模型
-      modal.onClose(async () => {
-        const { showConfirm } = await import('../components/modal.js')
-        const yes = await showConfirm('安装成功！是否现在配置 AI 模型接口？\n\n配置后即可开始使用对话功能。')
-        if (yes) {
-          navigate('/models')
-          // 延迟等页面渲染完成后打开向导
-          setTimeout(async () => {
-            const { openConfigWizard } = await import('../components/config-wizard.js')
-            openConfigWizard(() => {})
-          }, 300)
-        } else {
-          navigate('/dashboard')
-        }
+      toast('OpenClaw CLI 安装成功', 'success')
+      modal.onClose(() => {
+        runDetect(page)
       })
     } catch (e) {
       const errStr = String(e)

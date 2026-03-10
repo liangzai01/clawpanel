@@ -34,7 +34,11 @@ export function initRouter(contentEl) {
 async function loadRoute() {
   const hash = window.location.hash.slice(1) || _defaultRoute
   const loader = routes[hash]
-  if (!loader || !_contentEl) return
+  if (!_contentEl) return
+  if (!loader) {
+    if (hash !== _defaultRoute) navigate(_defaultRoute)
+    return
+  }
 
   // 竞态防护：记录本次加载 ID
   const thisLoad = ++_loadId
