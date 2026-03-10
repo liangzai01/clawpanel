@@ -92,20 +92,22 @@ async function runDetect(page) {
     <div class="stat-card loading-placeholder" style="height:48px;margin-top:8px"></div>
     <div class="stat-card loading-placeholder" style="height:48px;margin-top:8px"></div>
   `
-  // 并行检测 Node.js、OpenClaw CLI、配置文件
-  const [nodeRes, clawRes, configRes] = await Promise.allSettled([
+  // 并行检测 Node.js、Git、OpenClaw CLI、配置文件
+  const [nodeRes, gitRes, clawRes, configRes] = await Promise.allSettled([
     api.checkNode(),
+    api.checkGit(),
     api.getServicesStatus(),
     api.checkInstallation(),
   ])
 
   const node = nodeRes.status === 'fulfilled' ? nodeRes.value : { installed: false }
+  const git = gitRes.status === 'fulfilled' ? gitRes.value : { installed: false }
   const cliOk = clawRes.status === 'fulfilled'
     && clawRes.value?.length > 0
     && clawRes.value[0]?.cli_installed !== false
   const config = configRes.status === 'fulfilled' ? configRes.value : { installed: false }
 
-  renderSteps(page, { node, cliOk, config })
+  renderSteps(page, { node, git, cliOk, config })
 }
 
 function stepIcon(ok) {
@@ -113,71 +115,52 @@ function stepIcon(ok) {
   return `<span style="color:${color};font-weight:700;width:18px;display:inline-block">${ok ? '✓' : '✗'}</span>`
 }
 
-function renderSteps(page, { node, cliOk, config }) {
+function renderSteps(page, { node, git, cliOk, config }) {
   const stepsEl = page.querySelector('#setup-steps')
   const nodeOk = node.installed
-  const allOk = nodeOk && cliOk && config.installed
+  const gitOk = git.installed
+  const depsOk = nodeOk && gitOk
+  const allOk = depsOk && cliOk && config.installed
 
   let html = ''
 
-  // 第一步：Node.js
+  // 第一步：Node.js + Git 运行环境
   html += `
     <div class="config-section" style="text-align:left">
       <div class="config-section-title" style="display:flex;align-items:center;gap:4px">
-        ${stepIcon(nodeOk)} Node.js 环境
+        ${stepIcon(depsOk)} 运行环境
+        ${depsOk && window.__TAURI_INTERNALS__
+          ? `<button class="btn btn-secondary btn-sm" id="btn-show-node-install" style="margin-left:auto;font-size:11px;padding:2px 8px">重新安装</button>`
+          : ''
+        }
       </div>
-      ${nodeOk
-        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">已安装 ${node.version || ''}</p>`
+      <div style="display:flex;gap:20px;font-size:var(--font-size-sm);margin-bottom:6px">
+        <span>${stepIcon(nodeOk)} Node.js ${nodeOk ? `<span style="color:var(--text-tertiary);font-size:var(--font-size-xs)">${node.version || ''}</span>` : '<span style="color:var(--text-tertiary);font-size:var(--font-size-xs)">未安装</span>'}</span>
+        <span>${stepIcon(gitOk)} Git ${gitOk ? `<span style="color:var(--text-tertiary);font-size:var(--font-size-xs)">${(git.version || '').replace('git version ', '')}</span>` : '<span style="color:var(--text-tertiary);font-size:var(--font-size-xs)">未安装</span>'}</span>
+      </div>
+      ${depsOk
+        ? `<div id="node-reinstall-panel" style="display:none">
+             <p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">
+               重新安装运行环境
+             </p>
+             ${window.__TAURI_INTERNALS__ ? renderNodeInstallTabs() : ''}
+           </div>`
         : `<p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">
-            OpenClaw 基于 Node.js 运行，请先安装。
+            OpenClaw 需要 Node.js 和 Git，请先安装。
           </p>
           ${window.__TAURI_INTERNALS__
-            ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-                <button class="btn btn-primary btn-sm" id="btn-auto-install-node" disabled>
-                  一键安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
-                </button>
-                <select id="node-mirror-select" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-primary);background:var(--bg-secondary);color:var(--text-primary);font-size:var(--font-size-xs)">
-                  <option value="cn">npmmirror 淘宝镜像（国内推荐）</option>
-                  <option value="official">nodejs.org 官方</option>
-                </select>
-              </div>
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-                <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">安装到:</span>
-                <input id="node-install-path" type="text"
-                  value="${isWindowsClient() ? '~\\.openclaw\\node' : '~/.openclaw/node'}"
-                  style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
-              </div>
-              <div class="form-hint" style="margin-bottom:var(--space-sm)">绿色安装，不修改系统 PATH，安装完成后无需重启即可继续</div>
-              <a class="btn btn-secondary btn-sm" href="https://nodejs.org/" target="_blank" rel="noopener" style="margin-right:8px">手动下载</a>`
+            ? renderNodeInstallTabs()
             : `<a class="btn btn-primary btn-sm" href="https://nodejs.org/" target="_blank" rel="noopener">下载 Node.js</a>
+               <a class="btn btn-secondary btn-sm" href="https://git-scm.com/" target="_blank" rel="noopener" style="margin-left:8px">下载 Git</a>
                <span class="form-hint" style="margin-left:8px">安装后点击「重新检测」</span>`
-          }
-          <div style="margin-top:var(--space-sm);padding:8px 12px;background:var(--bg-tertiary);border-radius:var(--radius-sm);font-size:var(--font-size-xs);color:var(--text-secondary);line-height:1.6">
-            <strong>已经装了但检测不到？</strong>
-            ${isMacPlatform()
-              ? `macOS 上从 Finder 启动可能找不到 Node.js。试试关掉 ClawPanel 后从终端启动：<br>
-                 <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:3px;user-select:all">open /Applications/ClawPanel.app</code>`
-              : `若使用上方「一键安装」，无需重启即可识别。<br>
-                 若手动安装了 Node.js，需要<strong>重启 ClawPanel</strong> 后再检测（Windows 进程继承 PATH 在启动时固定）。`
-            }
-            <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <button class="btn btn-secondary btn-sm" id="btn-scan-node" style="font-size:11px;padding:3px 10px">${icon('search', 12)} 自动扫描</button>
-              <span style="color:var(--text-tertiary)">或手动指定路径：</span>
-            </div>
-            <div style="margin-top:6px;display:flex;gap:6px">
-              <input id="input-node-path" type="text" placeholder="${isMacPlatform() ? '/usr/local/bin' : 'F:\\\\AI\\\\Node'}"
-                style="flex:1;padding:4px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
-              <button class="btn btn-primary btn-sm" id="btn-check-path" style="font-size:11px;padding:3px 10px">检测</button>
-            </div>
-            <div id="scan-result" style="margin-top:6px;display:none"></div>
-          </div>`
+          }`
       }
     </div>
   `
 
   // 第二步：OpenClaw CLI
   html += `
-    <div class="config-section" style="text-align:left;${nodeOk ? '' : 'opacity:0.4;pointer-events:none'}">
+    <div class="config-section" style="text-align:left;${depsOk ? '' : 'opacity:0.4;pointer-events:none'}">
       <div class="config-section-title" style="display:flex;align-items:center;gap:4px">
         ${stepIcon(cliOk)} OpenClaw CLI
       </div>
@@ -214,24 +197,190 @@ function renderSteps(page, { node, cliOk, config }) {
   stepsEl.innerHTML = html
   bindEvents(page, { nodeOk, cliOk })
 
-  // Node.js 未安装时，异步获取最新 LTS 版本并更新按钮
-  if (!nodeOk && window.__TAURI_INTERNALS__) {
-    const btn = page.querySelector('#btn-auto-install-node')
-    const verEl = page.querySelector('#node-lts-ver')
-    api.getLatestNodeLtsVersion().then(ver => {
-      if (verEl) verEl.textContent = `v${ver}`
-      if (btn) {
-        btn.disabled = false
-        btn.dataset.nodeVersion = ver
-      }
-    }).catch(() => {
-      // 获取失败则使用 fallback，按钮仍可用
-      if (btn) {
-        btn.disabled = false
-        btn.dataset.nodeVersion = '22.14.0'
-      }
-    })
+  // 未安装时，异步获取最新版本并更新按钮
+  if (window.__TAURI_INTERNALS__) {
+    if (!nodeOk) {
+      const btn = page.querySelector('#btn-auto-install-node')
+      const verEl = page.querySelector('#node-lts-ver')
+      api.getLatestNodeLtsVersion().then(ver => {
+        if (verEl) verEl.textContent = `v${ver}`
+        if (btn) {
+          btn.disabled = false
+          btn.dataset.nodeVersion = ver
+        }
+      }).catch(() => {
+        if (btn) {
+          btn.disabled = false
+          btn.dataset.nodeVersion = '22.14.0'
+        }
+      })
+    }
+    if (isWindowsClient()) {
+      const gitBtn = page.querySelector('#btn-auto-install-git')
+      const gitVerEl = page.querySelector('#git-lts-ver')
+      api.getLatestGitVersion().then(ver => {
+        if (gitVerEl) gitVerEl.textContent = `v${ver}`
+        if (gitBtn) {
+          gitBtn.disabled = false
+          gitBtn.dataset.gitVersion = ver
+        }
+      }).catch(() => {
+        if (gitBtn) {
+          gitBtn.disabled = false
+          gitBtn.dataset.gitVersion = '2.48.1'
+        }
+      })
+    }
   }
+}
+
+function renderNodeInstallTabs() {
+  const isWin = isWindowsClient()
+  return `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border-primary);padding-bottom:8px">
+        <button class="btn btn-primary btn-sm node-install-tab" data-tab="auto" style="padding:4px 14px">自动安装（推荐）</button>
+        <button class="btn btn-secondary btn-sm node-install-tab" data-tab="cmd" style="padding:4px 14px">命令安装</button>
+        <button class="btn btn-secondary btn-sm node-install-tab" data-tab="manual" style="padding:4px 14px">手动安装</button>
+      </div>
+
+      <!-- 自动安装 tab -->
+      <div id="node-tab-auto">
+        <div class="form-hint" style="margin-bottom:10px;line-height:1.6">
+          便携版绿色安装，不修改系统 PATH，安装后<strong>无需重启</strong>即可继续。
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn btn-primary btn-sm" id="btn-auto-install-node" disabled style="min-width:180px">
+            一键安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
+          </button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">镜像源:</span>
+          <select id="node-mirror-select" style="flex:1;padding:3px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-primary);background:var(--bg-secondary);color:var(--text-primary);font-size:var(--font-size-xs)">
+            <option value="cn">npmmirror 淘宝镜像（国内推荐）</option>
+            <option value="official">nodejs.org 官方</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">安装目录:</span>
+          <input id="node-install-path" type="text"
+            value="${isWin ? 'D:\\.openclaw\\node' : '~/.openclaw/node'}"
+            style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
+          <button class="btn btn-secondary btn-sm" id="btn-pick-node-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
+        </div>
+
+        <!-- Git 安装（仅 Windows） -->
+        ${isWin ? `
+        <div style="border-top:1px solid var(--border-primary);margin-top:12px;padding-top:12px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn btn-primary btn-sm" id="btn-auto-install-git" disabled style="min-width:180px">
+              一键安装 Git <span id="git-lts-ver" style="opacity:0.7">MinGit</span>
+            </button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">安装目录:</span>
+            <input id="git-install-path" type="text"
+              value="D:\\.openclaw\\git"
+              style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
+            <button class="btn btn-secondary btn-sm" id="btn-pick-git-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
+          </div>
+          <div class="form-hint" style="line-height:1.5">MinGit 精简便携版，含 git 核心命令，约 40MB，不修改系统 PATH。</div>
+        </div>` : ''}
+      </div>
+
+      <!-- 命令安装 tab -->
+      <div id="node-tab-cmd" style="display:none">
+        <div style="display:flex;gap:4px;margin-bottom:10px">
+          <button class="btn btn-primary btn-sm pkgmgr-tab" data-pkgmgr="winget" style="padding:3px 10px">winget（推荐）</button>
+          <button class="btn btn-secondary btn-sm pkgmgr-tab" data-pkgmgr="choco" style="padding:3px 10px">Chocolatey</button>
+        </div>
+
+        <!-- winget -->
+        <div id="pkgmgr-winget-section">
+          <div class="form-hint" style="margin-bottom:8px;line-height:1.6">
+            <strong>winget</strong> 是 Windows 11 内置包管理器，无需配置镜像，国内可直接使用。<br>
+            安装完成后需<strong>重启 ClawPanel</strong>，然后点击「重新检测」。
+          </div>
+          <div style="margin-bottom:6px">
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">Node.js LTS：</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">Git：</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">winget install Git.Git --accept-package-agreements --accept-source-agreements</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="winget install Git.Git --accept-package-agreements --accept-source-agreements" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="btn-run-winget-auto">一键自动安装</button>
+            <button class="btn btn-secondary btn-sm" id="btn-open-admin-ps-winget">打开管理员 PowerShell</button>
+            <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements&#10;winget install Git.Git --accept-package-agreements --accept-source-agreements">复制全部命令</button>
+          </div>
+        </div>
+
+        <!-- choco -->
+        <div id="pkgmgr-choco-section" style="display:none">
+          <div class="form-hint" style="margin-bottom:8px;line-height:1.6">
+            <strong>Chocolatey</strong> 是 Windows 上流行的社区包管理器，首次使用需先安装 Chocolatey 本身。<br>
+            安装完成后需<strong>重启 ClawPanel</strong>，然后点击「重新检测」。
+          </div>
+          <div style="margin-bottom:6px">
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">步骤 1 — 安装 Chocolatey（管理员运行）：</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace;word-break:break-all">powershell -c "irm https://community.chocolatey.org/install.ps1|iex"</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd='powershell -c "irm https://community.chocolatey.org/install.ps1|iex"' style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">步骤 2 — 安装 Node.js LTS + Git：</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">choco install nodejs-lts git -y</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="choco install nodejs-lts git -y" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="btn-run-choco-auto">一键自动安装</button>
+            <button class="btn btn-secondary btn-sm" id="btn-open-admin-ps-choco">打开管理员 PowerShell</button>
+            <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd='powershell -c "irm https://community.chocolatey.org/install.ps1|iex"&#10;choco install nodejs-lts git -y'>复制全部命令</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 手动安装 tab -->
+      <div id="node-tab-manual" style="display:none">
+        <div style="margin-bottom:12px">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:6px">Node.js</div>
+          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+            <a class="btn btn-primary btn-sm" href="https://nodejs.org/zh-cn/download/" target="_blank" rel="noopener">nodejs.org 官网下载</a>
+            <a class="btn btn-secondary btn-sm" href="https://npmmirror.com/mirrors/node/" target="_blank" rel="noopener">淘宝镜像（国内加速）</a>
+          </div>
+          <ol style="margin:6px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2">
+            <li>下载 <strong>LTS</strong> 版本安装程序（.msi 或 .pkg）</li>
+            <li>运行安装程序，保持默认选项，完成安装</li>
+            <li>完全退出并重启 ClawPanel</li>
+            <li>点击「重新检测」</li>
+          </ol>
+        </div>
+        <div style="border-top:1px solid var(--border-primary);padding-top:12px">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:6px">Git（OpenClaw 需要）</div>
+          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+            <a class="btn btn-primary btn-sm" href="https://git-scm.com/download/win" target="_blank" rel="noopener">git-scm.com 官网下载</a>
+            <a class="btn btn-secondary btn-sm" href="https://registry.npmmirror.com/binary.html?path=git-for-windows/" target="_blank" rel="noopener">淘宝镜像（国内加速）</a>
+          </div>
+          <ol style="margin:6px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2">
+            <li>下载并运行安装程序</li>
+            <li>保持默认选项，一路 Next 完成安装</li>
+            <li>完全退出并重启 ClawPanel</li>
+            <li>点击「重新检测」</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  `
 }
 
 function renderInstallSection() {
@@ -393,6 +542,14 @@ function bindEvents(page, { nodeOk, cliOk }) {
     })
   }
 
+  // 已安装时「重新安装」按钮 — 展开安装面板
+  page.querySelector('#btn-show-node-install')?.addEventListener('click', () => {
+    const panel = page.querySelector('#node-reinstall-panel')
+    const btn = page.querySelector('#btn-show-node-install')
+    if (panel) panel.style.display = ''
+    if (btn) btn.style.display = 'none'
+  })
+
   // 一键安装 Node.js（便携版）
   page.querySelector('#btn-auto-install-node')?.addEventListener('click', async (e) => {
     const mirror = page.querySelector('#node-mirror-select')?.value || 'cn'
@@ -424,63 +581,141 @@ function bindEvents(page, { nodeOk, cliOk }) {
     }
   })
 
-  // 自动扫描 Node.js
-  page.querySelector('#btn-scan-node')?.addEventListener('click', async () => {
-    const btn = page.querySelector('#btn-scan-node')
-    const resultEl = page.querySelector('#scan-result')
-    btn.disabled = true
-    btn.textContent = '扫描中...'
-    resultEl.style.display = 'block'
-    resultEl.innerHTML = '<span style="color:var(--text-tertiary)">正在扫描常见安装路径...</span>'
-    try {
-      const results = await api.scanNodePaths()
-      if (results.length === 0) {
-        resultEl.innerHTML = '<span style="color:var(--warning)">未找到 Node.js 安装，请手动指定路径或下载安装。</span>'
-      } else {
-        resultEl.innerHTML = results.map(r =>
-          `<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
-            <span style="color:var(--success)">✓</span>
-            <code style="flex:1;background:var(--bg-secondary);padding:2px 6px;border-radius:3px;font-size:11px">${r.path}</code>
-            <span style="font-size:11px;color:var(--text-tertiary)">${r.version}</span>
-            <button class="btn btn-primary btn-sm btn-use-path" data-path="${r.path}" style="font-size:10px;padding:2px 8px">使用</button>
-          </div>`
-        ).join('')
-        resultEl.querySelectorAll('.btn-use-path').forEach(b => {
-          b.addEventListener('click', async () => {
-            await api.saveCustomNodePath(b.dataset.path)
-            toast('Node.js 路径已保存，正在重新检测...', 'success')
-            setTimeout(() => window.location.reload(), 500)
-          })
-        })
+  // 顶层 Tab 切换（自动安装 / 命令安装 / 手动安装）
+  page.querySelectorAll('.node-install-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab
+      page.querySelectorAll('.node-install-tab').forEach(t => {
+        t.classList.toggle('btn-primary', t.dataset.tab === target)
+        t.classList.toggle('btn-secondary', t.dataset.tab !== target)
+      })
+      page.querySelector('#node-tab-auto').style.display = target === 'auto' ? '' : 'none'
+      page.querySelector('#node-tab-cmd').style.display = target === 'cmd' ? '' : 'none'
+      page.querySelector('#node-tab-manual').style.display = target === 'manual' ? '' : 'none'
+    })
+  })
+
+  // 包管理器子标签切换（winget / Chocolatey）
+  page.querySelectorAll('.pkgmgr-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const pkgmgr = tab.dataset.pkgmgr
+      page.querySelectorAll('.pkgmgr-tab').forEach(t => {
+        t.classList.toggle('btn-primary', t.dataset.pkgmgr === pkgmgr)
+        t.classList.toggle('btn-secondary', t.dataset.pkgmgr !== pkgmgr)
+      })
+      const wingetSection = page.querySelector('#pkgmgr-winget-section')
+      const chocoSection = page.querySelector('#pkgmgr-choco-section')
+      if (wingetSection) wingetSection.style.display = pkgmgr === 'winget' ? '' : 'none'
+      if (chocoSection) chocoSection.style.display = pkgmgr === 'choco' ? '' : 'none'
+    })
+  })
+
+  // 通用复制命令按钮
+  page.querySelectorAll('.copy-cmd-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.dataset.cmd
+      try {
+        await navigator.clipboard.writeText(cmd)
+        const orig = btn.textContent
+        btn.textContent = '✓ 已复制'
+        setTimeout(() => { btn.textContent = orig }, 1500)
+      } catch {
+        toast('复制失败，请手动复制', 'warning')
       }
+    })
+  })
+
+  // 一键自动安装 — winget（打开管理员 PS 并自动执行命令）
+  page.querySelector('#btn-run-winget-auto')?.addEventListener('click', async () => {
+    try {
+      await api.runPowershellScriptAsAdmin(
+        'winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements\r\nwinget install Git.Git --accept-package-agreements --accept-source-agreements'
+      )
+      toast('已请求管理员权限，安装窗口正在打开...', 'success')
     } catch (e) {
-      resultEl.innerHTML = `<span style="color:var(--danger)">扫描失败: ${e}</span>`
-    } finally {
-      btn.disabled = false
-      btn.innerHTML = `${icon('search', 12)} 自动扫描`
+      toast(`启动失败: ${e}`, 'warning')
     }
   })
 
-  // 手动指定路径检测
-  page.querySelector('#btn-check-path')?.addEventListener('click', async () => {
-    const input = page.querySelector('#input-node-path')
-    const resultEl = page.querySelector('#scan-result')
-    const dir = input?.value?.trim()
-    if (!dir) { toast('请输入 Node.js 安装目录', 'warning'); return }
-    resultEl.style.display = 'block'
-    resultEl.innerHTML = '<span style="color:var(--text-tertiary)">检测中...</span>'
+  // 一键自动安装 — Chocolatey（打开管理员 PS 并自动执行命令）
+  page.querySelector('#btn-run-choco-auto')?.addEventListener('click', async () => {
     try {
-      const result = await api.checkNodeAtPath(dir)
-      if (result.installed) {
-        await api.saveCustomNodePath(dir)
-        resultEl.innerHTML = `<span style="color:var(--success)">✓ 找到 Node.js ${result.version}，路径已保存</span>`
-        toast('Node.js 路径已保存，正在重新检测...', 'success')
-        setTimeout(() => window.location.reload(), 500)
-      } else {
-        resultEl.innerHTML = `<span style="color:var(--warning)">该目录下未找到 node 可执行文件，请确认路径正确。</span>`
+      await api.runPowershellScriptAsAdmin(
+        'powershell -c "irm https://community.chocolatey.org/install.ps1|iex"\r\nchoco install nodejs-lts git -y'
+      )
+      toast('已请求管理员权限，安装窗口正在打开...', 'success')
+    } catch (e) {
+      toast(`启动失败: ${e}`, 'warning')
+    }
+  })
+
+  // 打开管理员 PowerShell（仅打开空白窗口）
+  const openAdminPs = async () => {
+    try {
+      await api.launchAdminPowershell()
+      toast('已打开管理员 PowerShell，请粘贴命令执行', 'success')
+    } catch (e) {
+      console.warn('[setup] launchAdminPowershell failed:', e)
+      toast('自动打开失败，请手动以管理员身份打开 PowerShell', 'warning')
+    }
+  }
+  page.querySelector('#btn-open-admin-ps-winget')?.addEventListener('click', openAdminPs)
+  page.querySelector('#btn-open-admin-ps-choco')?.addEventListener('click', openAdminPs)
+
+  // 浏览选择安装目录
+  page.querySelector('#btn-pick-node-dir')?.addEventListener('click', async () => {
+    try {
+      const selected = await api.pickDirectory('选择 Node.js 安装目录')
+      if (selected) {
+        const input = page.querySelector('#node-install-path')
+        if (input) input.value = selected
       }
     } catch (e) {
-      resultEl.innerHTML = `<span style="color:var(--danger)">检测失败: ${e}</span>`
+      toast('目录选择失败，请手动输入路径', 'warning')
+    }
+  })
+
+  // 浏览选择 Git 安装目录
+  page.querySelector('#btn-pick-git-dir')?.addEventListener('click', async () => {
+    try {
+      const selected = await api.pickDirectory('选择 Git 安装目录')
+      if (selected) {
+        const input = page.querySelector('#git-install-path')
+        if (input) input.value = selected
+      }
+    } catch (e) {
+      toast('目录选择失败，请手动输入路径', 'warning')
+    }
+  })
+
+  // 一键安装 Git（便携版 MinGit）
+  page.querySelector('#btn-auto-install-git')?.addEventListener('click', async (e) => {
+    const mirror = page.querySelector('#node-mirror-select')?.value || 'cn'
+    const version = e.currentTarget.dataset.gitVersion || '2.48.1'
+    const installPath = page.querySelector('#git-install-path')?.value?.trim() || null
+    const modal = showUpgradeModal()
+    let unlistenLog, unlistenProgress
+
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const { listen } = await import('@tauri-apps/api/event')
+        unlistenLog = await listen('upgrade-log', (e) => modal.appendLog(e.payload))
+        unlistenProgress = await listen('upgrade-progress', (e) => modal.setProgress(e.payload))
+      }
+
+      const msg = await api.installGitPortable(mirror, version, installPath)
+      modal.setDone(msg)
+      toast('Git 安装成功', 'success')
+      modal.onClose(() => {
+        invalidate('check_git')
+        runDetect(page)
+      })
+    } catch (e) {
+      modal.appendLog(String(e))
+      modal.setError('Git 安装失败')
+    } finally {
+      unlistenLog?.()
+      unlistenProgress?.()
     }
   })
 

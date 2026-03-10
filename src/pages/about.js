@@ -2,7 +2,7 @@
  * 关于页面
  * 版本信息、项目链接、相关项目、系统环境
  */
-import { api } from '../lib/tauri-api.js'
+import { api, invalidate } from '../lib/tauri-api.js'
 import { toast } from '../components/toast.js'
 import { showUpgradeModal, showConfirm } from '../components/modal.js'
 import { setUpgrading } from '../lib/app-state.js'
@@ -103,7 +103,10 @@ async function loadData(page) {
         const confirmed = await showConfirm('确定要卸载 OpenClaw 吗？\n\n这将停止 Gateway 服务并卸载 npm 全局包。\n配置文件（~/.openclaw/）默认保留，可稍后手动删除。')
         if (!confirmed) return
         const modal = showUpgradeModal('卸载 OpenClaw')
-        modal.onClose(() => loadData(page))
+        modal.onClose(() => {
+          invalidate('check_installation', 'get_version_info', 'check_node', 'check_git')
+          loadData(page)
+        })
         modal.appendLog('开始卸载 OpenClaw...')
         let unlistenLog, unlistenProgress
         try {
@@ -128,10 +131,13 @@ async function loadData(page) {
     const purgeBtn = cards.querySelector('#btn-purge')
     if (purgeBtn) {
       purgeBtn.onclick = async () => {
-        const confirmed = await showConfirm('确定要彻底卸载 OpenClaw 吗？\n\n将执行 openclaw uninstall --all --yes，并额外清理 Gateway、LaunchAgent/守护进程、残留配置与相关进程。\n此操作不可撤销。')
+        const confirmed = await showConfirm('确定要彻底卸载 OpenClaw 吗？\n\n将停止所有相关进程、npm 卸载 CLI 包，并删除配置目录（~/.openclaw/）。\n此操作不可撤销。')
         if (!confirmed) return
         const modal = showUpgradeModal('彻底卸载 OpenClaw')
-        modal.onClose(() => loadData(page))
+        modal.onClose(() => {
+          invalidate('check_installation', 'get_version_info', 'check_node', 'check_git')
+          loadData(page)
+        })
         modal.appendLog('开始彻底卸载 OpenClaw...')
         let unlistenLog, unlistenProgress
         try {

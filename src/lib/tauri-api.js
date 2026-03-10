@@ -14,11 +14,14 @@ const NO_MOCK_CMDS = new Set([
   'write_memory_file', 'delete_memory_file',
   'set_npm_registry', 'reload_gateway', 'restart_gateway',
   'auto_pair_device',
+  'launch_admin_powershell',
+  'run_powershell_script_as_admin',
   'docker_create_container', 'docker_start_container', 'docker_stop_container',
   'docker_restart_container', 'docker_remove_container', 'docker_container_exec', 'docker_gateway_chat', 'docker_pull_image',
   'docker_add_node', 'docker_remove_node',
   'instance_add', 'instance_remove', 'instance_set_active',
   'install_node_portable',
+  'install_git_portable',
 ])
 
 // 仅在 Node.js 后端实现的命令（Tauri Rust 不处理），强制走 webInvoke
@@ -341,16 +344,22 @@ export const api = {
   checkInstallation: () => cachedInvoke('check_installation', {}, 60000),
   initOpenclawConfig: () => { invalidate('check_installation'); return invoke('init_openclaw_config') },
   checkNode: () => cachedInvoke('check_node', {}, 60000),
+  checkGit: () => cachedInvoke('check_git', {}, 60000),
   checkNodeAtPath: (nodeDir) => invoke('check_node_at_path', { nodeDir }),
   scanNodePaths: () => invoke('scan_node_paths'),
   saveCustomNodePath: (nodeDir) => invoke('save_custom_node_path', { nodeDir }),
   getLatestNodeLtsVersion: () => invoke('get_latest_node_lts_version'),
   installNodePortable: (mirror, version, installPath) => invoke('install_node_portable', { mirror, version, installPath: installPath || null }),
+  getLatestGitVersion: () => invoke('get_latest_git_version'),
+  installGitPortable: (mirror, version, installPath) => invoke('install_git_portable', { mirror, version, installPath: installPath || null }),
   getDeployConfig: () => cachedInvoke('get_deploy_config'),
   patchModelVision: () => invoke('patch_model_vision'),
   checkPanelUpdate: () => invoke('check_panel_update'),
   writeEnvFile: (path, config) => invoke('write_env_file', { path, config }),
   launchOpenclawOnboardAdmin: () => invoke('launch_openclaw_onboard_admin'),
+  launchAdminPowershell: () => invoke('launch_admin_powershell'),
+  runPowershellScriptAsAdmin: (commands) => invoke('run_powershell_script_as_admin', { commands }),
+  pickDirectory: (title) => invoke('pick_directory', { title }),
 
   // 备份管理
   listBackups: () => cachedInvoke('list_backups'),

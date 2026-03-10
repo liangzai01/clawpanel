@@ -18,8 +18,8 @@ export function diagnoseInstallError(errStr) {
   if (s.includes('permission denied (publickey)') || s.includes('ssh://git@github')) {
     return {
       title: '安装失败 — Git SSH 权限',
-      hint: '依赖包用了 SSH 协议拉取代码，但你没配 GitHub SSH Key。运行以下命令改用 HTTPS：',
-      command: 'git config --global url."https://github.com/".insteadOf ssh://git@github.com/',
+      hint: '依赖包用了 SSH 协议拉取代码，但你没配 GitHub SSH Key。运行以下两条命令改用 HTTPS：',
+      command: 'git config --global url."https://github.com/".insteadOf ssh://git@github.com/ && git config --global url."https://github.com/".insteadOf git@github.com:',
     }
   }
 
@@ -38,8 +38,8 @@ export function diagnoseInstallError(errStr) {
   if (s.includes('eperm') || s.includes('operation not permitted')) {
     return {
       title: '安装失败 — 文件被占用或权限不足',
-      hint: '常见原因：杀毒软件拦截、Gateway 进程未关闭、或终端缺少管理员权限。\n请先关闭 Gateway，再以管理员身份打开终端手动安装：',
-      command: NPM_CMD,
+      hint: '文件被其他进程锁定。请先关闭 ClawPanel 和所有 Node.js 进程，再以管理员身份打开 PowerShell 执行：',
+      command: 'npm cache clean --force && ' + NPM_CMD,
     }
   }
 
@@ -58,8 +58,8 @@ export function diagnoseInstallError(errStr) {
     }
     return {
       title: '安装失败 — 文件或目录不存在',
-      hint: '常见原因：npm 全局目录未创建、杀毒软件隔离了文件、或磁盘权限问题。\n建议步骤：\n1. 关闭杀毒软件的实时防护\n2. 以管理员身份打开 PowerShell\n3. 手动运行安装命令：',
-      command: NPM_CMD,
+      hint: '常见原因：npm 缓存损坏、npm 全局目录未创建、或磁盘权限问题。\n建议步骤：\n1. 清理 npm 缓存\n2. 关闭杀毒软件的实时防护\n3. 以管理员身份打开 PowerShell，执行：',
+      command: 'npm cache clean --force && ' + NPM_CMD,
     }
   }
 
