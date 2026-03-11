@@ -36,13 +36,13 @@ function getOnboardPlatformText() {
   }
   if (isWindowsClient()) {
     return {
-      openLabel: '管理员 PowerShell',
+      openLabel: '管理员 CMD',
       openAction: '打开终端并执行初始化',
-      openHint: '可以直接从这里打开管理员 PowerShell 并自动执行初始化命令。',
-      success: '已打开管理员 PowerShell 并开始执行初始化',
-      successCopied: '已打开管理员 PowerShell 并开始执行初始化，命令也已复制',
-      fallback: '自动打开失败，请在管理员 PowerShell 中粘贴执行',
-      installDone: '安装完成。关闭后可在页面中的”初始化向导”卡片打开管理员 PowerShell 并自动执行',
+      openHint: '可以直接从这里打开管理员 CMD 并自动执行初始化命令。',
+      success: '已打开管理员 CMD 并开始执行初始化',
+      successCopied: '已打开管理员 CMD 并开始执行初始化，命令也已复制',
+      fallback: '自动打开失败，请在管理员 CMD 中粘贴执行',
+      installDone: '安装完成。关闭后可在页面中的”初始化向导”卡片打开管理员 CMD 并自动执行',
     }
   }
   return {

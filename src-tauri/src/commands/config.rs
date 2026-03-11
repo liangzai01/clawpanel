@@ -1382,24 +1382,14 @@ pub fn launch_openclaw_onboard_admin() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let cli_path = resolve_openclaw_cli_path()?;
+        let cmd_arg = format!("/K \"{}\" onboard --install-daemon", cli_path);
+
+        // 用 PowerShell Start-Process 以管理员权限启动 cmd.exe
         let ps_path = windows_powershell_path();
-        let ps_escaped = ps_path.replace('\'', "''");
-
-        // 优先用 node.exe + .js 路径，避免 PowerShell 调用 .cmd 时额外 spawn cmd.exe
-        let inner_cmd = if let Some(js_path) = resolve_openclaw_js_path() {
-            let node_exe = find_node_exe();
-            let node_esc = node_exe.replace('\'', "''");
-            let js_esc = js_path.replace('\'', "''");
-            format!("& ''{node_esc}'' ''{js_esc}'' onboard --install-daemon")
-        } else {
-            // 降级：直接调用 .cmd（会额外弹出 cmd 窗口，但不影响功能）
-            let cli_path = resolve_openclaw_cli_path()?;
-            let cli_esc = cli_path.replace('\'', "''");
-            format!("& ''{cli_esc}'' onboard --install-daemon")
-        };
-
         let script = format!(
-            "Start-Process -FilePath '{ps_escaped}' -Verb RunAs -ArgumentList @('-NoExit','-ExecutionPolicy','Bypass','-Command','{inner_cmd}')"
+            "Start-Process -FilePath cmd.exe -Verb RunAs -ArgumentList '{}'",
+            cmd_arg.replace('\'', "''")
         );
 
         Command::new(&ps_path)
@@ -1409,7 +1399,7 @@ pub fn launch_openclaw_onboard_admin() -> Result<String, String> {
             .spawn()
             .map_err(|e| format!("打开管理员命令行失败: {e}"))?;
 
-        Ok("已请求打开管理员 PowerShell 并运行初始化向导".into())
+        Ok("已请求以管理员身份打开 CMD 并运行初始化向导".into())
     }
 
     #[cfg(target_os = "macos")]
@@ -1440,7 +1430,7 @@ pub fn launch_openclaw_onboard_admin() -> Result<String, String> {
     }
 }
 
-/// 从 openclaw.cmd shim 文件中提取真实的 .js 入口路径（避免 PowerShell 调用 .cmd 时 spawn cmd.exe）
+/// 从 openclaw.cmd shim 文件中提取真实的 .js/.mjs 入口路径（避免 PowerShell 调用 .cmd 时 spawn cmd.exe）
 #[cfg(target_os = "windows")]
 fn resolve_openclaw_js_path() -> Option<String> {
     let appdata = std::env::var("APPDATA").ok()?;
@@ -1449,9 +1439,9 @@ fn resolve_openclaw_js_path() -> Option<String> {
 
     // npm shim 末行形如：
     //   endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%node_modules\pkg\bin\script.js" %*
-    // 其中 %dp0% 即 npm 目录，提取以 .js 结尾的引号内路径
+    // 其中 %dp0% 即 npm 目录，提取以 .js / .mjs 结尾的引号内路径
     for line in content.lines() {
-        if !line.contains(".js\"") {
+        if !line.contains(".js\"") && !line.contains(".mjs\"") {
             continue;
         }
         let chars: Vec<char> = line.chars().collect();
@@ -1464,7 +1454,7 @@ fn resolve_openclaw_js_path() -> Option<String> {
                     i += 1;
                 }
                 let candidate: String = chars[j_start..i].iter().collect();
-                if candidate.ends_with(".js") {
+                if candidate.ends_with(".js") || candidate.ends_with(".mjs") {
                     let npm_str = npm_dir.to_string_lossy();
                     let resolved = candidate
                         .replace("%dp0%\\", &format!("{}\\", npm_str))
