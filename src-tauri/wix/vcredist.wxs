@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  安装时自动检测并补装 Visual C++ 2015-2022 Redistributable (x64)
+  node-llama-cpp 原生模块需要 vcruntime140.dll 才能加载
+
+  实现方式：
+  - Type-50 CustomAction：Property 指定可执行文件路径，ExeCommand 指定参数
+  - SetProperty 在执行序列中动态解析 [System64Folder]（兼容所有 Windows 10/11）
+  - PowerShell 通过 Net.WebClient 从 Microsoft CDN 下载并静默安装
+  - Return="ignore" 确保失败不阻断主安装流程
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+
+    <!-- 检测 System32 中是否已存在 vcruntime140.dll -->
+    <Property Id="VCRUNTIME140_FOUND">
+      <DirectorySearch Id="VCRuntimeDirSearch" Path="[System64Folder]">
+        <FileSearch Id="VCRuntimeFileSearch" Name="vcruntime140.dll" />
+      </DirectorySearch>
+    </Property>
+
+    <!--
+      在执行序列中将 [System64Folder] 解析为 PowerShell 实际路径。
+      SetProperty Before="CA_InstallVCRedist" 确保此属性在 CA 运行前设置完毕。
+    -->
+    <SetProperty Id="PSEXE"
+                 Value="[System64Folder]WindowsPowerShell\v1.0\powershell.exe"
+                 Before="CA_InstallVCRedist"
+                 Sequence="execute" />
+
+    <!--
+      Type-50 CustomAction：
+        Property   = 持有可执行文件路径的属性名（PSEXE）
+        ExeCommand = 传递给 powershell.exe 的参数
+      PS 逻辑：拼接临时路径 → DownloadFile → 静默安装 → 删除临时文件
+      内部字符串均使用单引号，避免与 ExeCommand 属性中 &quot; 嵌套
+    -->
+    <CustomAction Id="CA_InstallVCRedist"
+                  Property="PSEXE"
+                  ExeCommand="-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$t=[IO.Path]::Combine($env:TEMP,'vcr_x64.exe');(New-Object Net.WebClient).DownloadFile('https://aka.ms/vs/17/release/vc_redist.x64.exe',$t);Start-Process -FilePath $t -ArgumentList '/install /quiet /norestart' -Wait;Remove-Item $t -EA 0&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- 仅在全新安装且未检测到 vcruntime140.dll 时触发 -->
+      <Custom Action="CA_InstallVCRedist" After="InstallFiles">
+        NOT Installed AND NOT VCRUNTIME140_FOUND
+      </Custom>
+    </InstallExecuteSequence>
+
+  </Fragment>
+</Wix>
