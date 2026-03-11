@@ -44,12 +44,33 @@ fn get_configured_registry() -> String {
 /// Windows 上 npm 是 npm.cmd，需要通过 cmd /c 调用，并隐藏窗口
 fn npm_command() -> Command {
     let registry = get_configured_registry();
+
+    // 始终从 clawpanel.json 读取最新 nodePath，绕过 OnceLock 缓存。
+    // 若使用 enhanced_path()，便携版安装后 PATH 缓存已固化，npm 会找不到。
+    let portable_node_dir = std::fs::read_to_string(super::openclaw_dir().join("clawpanel.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("nodePath")?.as_str().map(String::from));
+
+    let base_path = std::env::var("PATH").unwrap_or_default();
+
+    #[cfg(target_os = "windows")]
+    let effective_path = match &portable_node_dir {
+        Some(p) => format!("{};{}", p, base_path),
+        None => super::enhanced_path(),
+    };
+    #[cfg(not(target_os = "windows"))]
+    let effective_path = match &portable_node_dir {
+        Some(p) => format!("{}:{}", p, base_path),
+        None => super::enhanced_path(),
+    };
+
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         let mut cmd = Command::new("cmd");
         cmd.args(["/c", "npm", "--registry", &registry]);
-        cmd.env("PATH", super::enhanced_path());
+        cmd.env("PATH", effective_path);
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd
     }
@@ -57,7 +78,7 @@ fn npm_command() -> Command {
     {
         let mut cmd = Command::new("npm");
         cmd.args(["--registry", &registry]);
-        cmd.env("PATH", super::enhanced_path());
+        cmd.env("PATH", effective_path);
         cmd
     }
 }

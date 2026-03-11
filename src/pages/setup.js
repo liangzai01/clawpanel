@@ -236,6 +236,7 @@ function renderSteps(page, { node, git, cliOk, config }) {
 
 function renderNodeInstallTabs() {
   const isWin = isWindowsClient()
+  const isMac = isMacClient()
   return `
     <div style="margin-bottom:10px">
       <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border-primary);padding-bottom:8px">
@@ -278,7 +279,41 @@ function renderNodeInstallTabs() {
             </button>
             <span id="manual-git-detect" style="font-size:var(--font-size-xs);color:var(--text-secondary)"></span>
           </div>
-        </div>` : ''}
+        </div>` : `
+        <!-- Git 安装引导（macOS / Linux） -->
+        <div style="border-top:1px solid var(--border-primary);padding-top:12px;margin-bottom:12px">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:8px">Git（OpenClaw 必需）</div>
+          ${isMac ? `
+          <div style="margin-bottom:6px">
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">方式一：Xcode 命令行工具（推荐）</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">xcode-select --install</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="xcode-select --install" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">方式二：Homebrew（如已安装）</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">brew install git</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="brew install git" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>` : `
+          <div style="margin-bottom:6px">
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">Ubuntu / Debian：</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">sudo apt-get install git</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="sudo apt-get install git" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">CentOS / RHEL / Fedora：</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;background:var(--bg-secondary);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;font-family:monospace">sudo yum install git</code>
+              <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="sudo yum install git" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
+            </div>
+          </div>`}
+          <div class="form-hint" style="margin-top:8px">安装后重启 ClawPanel，点击「重新检测」</div>
+        </div>`}
 
         <ol style="margin:12px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2.2;border-top:1px solid var(--border-primary);padding-top:10px">
           <li>点击上方按钮，浏览器自动打开下载链接</li>
