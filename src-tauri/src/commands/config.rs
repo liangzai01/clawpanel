@@ -1843,7 +1843,7 @@ pub async fn install_git_portable(
         let install_base = install_path
             .as_deref()
             .map(expand_tilde)
-            .unwrap_or_else(|| PathBuf::from(r"D:\.openclaw\git"));
+            .unwrap_or_else(|| super::openclaw_dir().join("git"));
         let git_bin = install_base.join("cmd").join("git.exe");
 
         // 已安装则跳过下载

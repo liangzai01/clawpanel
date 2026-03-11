@@ -209,10 +209,8 @@ function renderSteps(page, { node, git, cliOk, config }) {
           btn.dataset.nodeVersion = ver
         }
       }).catch(() => {
-        if (btn) {
-          btn.disabled = false
-          btn.dataset.nodeVersion = '22.14.0'
-        }
+        // Rust 侧已内置 fallback，invoke 本身失败时不强行设版本
+        if (btn) btn.disabled = false
       })
     }
     if (isWindowsClient()) {
@@ -331,7 +329,7 @@ function renderNodeInstallTabs() {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
           <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">根目录:</span>
           <input id="root-install-path" type="text"
-            value="${isWin ? 'D:\\openclaw' : '~/openclaw'}"
+            value="${isWin ? 'C:\\openclaw' : '~/openclaw'}"
             style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
           <button class="btn btn-secondary btn-sm" id="btn-pick-root-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
         </div>
@@ -688,7 +686,7 @@ function bindEvents(page, { nodeOk, cliOk }) {
     const version = e.currentTarget.dataset.nodeVersion || '24.14.0'
     const root = page.querySelector('#root-install-path')?.value?.trim() || null
     const installPath = joinInstallPath(root, 'node')
-    const modal = showUpgradeModal()
+    const modal = showUpgradeModal('安装 Node.js')
     let unlistenLog, unlistenProgress
 
     try {
@@ -700,6 +698,14 @@ function bindEvents(page, { nodeOk, cliOk }) {
 
       const msg = await api.installNodePortable(mirror, version, installPath)
       modal.setDone(msg)
+      // 安装后自动配置系统 PATH，用户重开终端即可直接使用
+      try {
+        const pathMsg = await api.addPortableToSystemPath()
+        modal.appendLog(`🔧 ${pathMsg}`)
+        modal.appendLog('✅ 已写入系统 PATH，重新打开终端后即可使用 node 命令')
+      } catch (pathErr) {
+        modal.appendLog(`⚠️ 自动配置 PATH 失败: ${pathErr}，请手动点击"配置到系统 PATH"按钮`)
+      }
       toast('Node.js 安装成功', 'success')
       modal.onClose(() => {
         invalidate('check_node', 'check_installation')
@@ -829,7 +835,7 @@ function bindEvents(page, { nodeOk, cliOk }) {
     const version = e.currentTarget.dataset.gitVersion || '2.48.1'
     const root = page.querySelector('#root-install-path')?.value?.trim() || null
     const installPath = joinInstallPath(root, 'git')
-    const modal = showUpgradeModal()
+    const modal = showUpgradeModal('安装 Git')
     let unlistenLog, unlistenProgress
 
     try {
@@ -841,6 +847,14 @@ function bindEvents(page, { nodeOk, cliOk }) {
 
       const msg = await api.installGitPortable(mirror, version, installPath)
       modal.setDone(msg)
+      // 安装后自动配置系统 PATH，用户重开终端即可直接使用
+      try {
+        const pathMsg = await api.addPortableToSystemPath()
+        modal.appendLog(`🔧 ${pathMsg}`)
+        modal.appendLog('✅ 已写入系统 PATH，重新打开终端后即可使用 git 命令')
+      } catch (pathErr) {
+        modal.appendLog(`⚠️ 自动配置 PATH 失败: ${pathErr}，请手动点击"配置到系统 PATH"按钮`)
+      }
       toast('Git 安装成功', 'success')
       modal.onClose(() => {
         invalidate('check_git')
@@ -877,7 +891,7 @@ function bindEvents(page, { nodeOk, cliOk }) {
   if (installBtn && nodeOk) installBtn.addEventListener('click', async () => {
     const source = page.querySelector('input[name="install-source"]:checked')?.value || 'chinese'
     const registry = page.querySelector('#registry-select')?.value
-    const modal = showUpgradeModal()
+    const modal = showUpgradeModal('安装 OpenClaw')
     let unlistenLog, unlistenProgress
 
     setUpgrading(true)
