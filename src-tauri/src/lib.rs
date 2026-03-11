@@ -76,6 +76,7 @@ pub fn run() {
             config::check_git,
             config::get_latest_git_version,
             config::install_git_portable,
+            config::add_portable_to_system_path,
             config::write_env_file,
             config::launch_openclaw_onboard_admin,
             config::launch_admin_powershell,

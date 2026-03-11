@@ -352,6 +352,7 @@ export const api = {
   installNodePortable: (mirror, version, installPath) => invoke('install_node_portable', { mirror, version, installPath: installPath || null }),
   getLatestGitVersion: () => invoke('get_latest_git_version'),
   installGitPortable: (mirror, version, installPath) => invoke('install_git_portable', { mirror, version, installPath: installPath || null }),
+  addPortableToSystemPath: () => invoke('add_portable_to_system_path'),
   getDeployConfig: () => cachedInvoke('get_deploy_config'),
   patchModelVision: () => invoke('patch_model_vision'),
   checkPanelUpdate: () => invoke('check_panel_update'),

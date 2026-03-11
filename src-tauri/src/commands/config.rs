@@ -1530,10 +1530,10 @@ async fn fetch_lts_version_inner() -> Option<String> {
     None
 }
 
-/// 获取最新 Node.js LTS 版本号（v22.x），失败时返回内置 fallback
+/// 获取最新 Node.js LTS 版本号（v24.x），失败时返回内置 fallback
 #[tauri::command]
 pub async fn get_latest_node_lts_version() -> Result<String, String> {
-    const FALLBACK: &str = "22.14.0";
+    const FALLBACK: &str = "24.14.0";
     Ok(fetch_lts_version_inner().await.unwrap_or_else(|| FALLBACK.to_string()))
 }
 
@@ -1940,6 +1940,143 @@ pub async fn install_git_portable(
     {
         let _ = (app, mirror, version, install_path);
         Err("Git 便携版仅支持 Windows 平台，请使用系统包管理器安装 Git".into())
+    }
+}
+
+/// 将便携版工具路径永久写入系统 PATH
+/// - macOS/Linux：追加 export 行到存在的 shell 配置文件（.zshrc / .bash_profile 等）
+/// - Windows：通过 PowerShell 修改用户级环境变量，不影响系统 PATH
+#[tauri::command]
+pub fn add_portable_to_system_path() -> Result<String, String> {
+    let config_path = super::openclaw_dir().join("clawpanel.json");
+    if !config_path.exists() {
+        return Err("未找到便携版工具配置，请先完成安装".into());
+    }
+    let config: serde_json::Value = {
+        let s = fs::read_to_string(&config_path).map_err(|e| format!("读取配置失败: {e}"))?;
+        serde_json::from_str(&s).unwrap_or_default()
+    };
+
+    let node_dir = config.get("nodePath").and_then(|v| v.as_str()).map(String::from);
+
+    #[cfg(target_os = "windows")]
+    let git_cmd_dir = config
+        .get("gitPath")
+        .and_then(|v| v.as_str())
+        .map(|p| format!("{}\\cmd", p));
+    #[cfg(not(target_os = "windows"))]
+    let git_cmd_dir: Option<String> = None;
+
+    let mut new_paths: Vec<String> = Vec::new();
+    if let Some(p) = node_dir { new_paths.push(p); }
+    if let Some(p) = git_cmd_dir { new_paths.push(p); }
+    if new_paths.is_empty() {
+        return Err("未找到已安装的便携版工具，请先完成安装".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // 读取当前用户 PATH，按 ; 分割后精确匹配，避免重复追加
+        let ps_read = "[Environment]::GetEnvironmentVariable('PATH','User')";
+        let out = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", ps_read])
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| format!("读取 PATH 失败: {e}"))?;
+        let current_user_path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        // 按分号分割，lowercase 后精确比对
+        let existing: Vec<String> = current_user_path
+            .split(';')
+            .map(|s| s.trim().to_lowercase())
+            .collect();
+        let to_add: Vec<&str> = new_paths
+            .iter()
+            .filter(|p| !existing.contains(&p.to_lowercase()))
+            .map(|p| p.as_str())
+            .collect();
+
+        if to_add.is_empty() {
+            return Ok("PATH 已包含便携版工具路径，终端重启后即可使用".into());
+        }
+
+        let prefix = to_add.join(";");
+        let ps_set = format!(
+            "$cur = [Environment]::GetEnvironmentVariable('PATH','User'); \
+             [Environment]::SetEnvironmentVariable('PATH', '{};' + $cur, 'User')",
+            prefix.replace('\'', "''")
+        );
+        let result = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_set])
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| format!("设置 PATH 失败: {e}"))?;
+        if !result.status.success() {
+            return Err(format!(
+                "写入失败: {}",
+                String::from_utf8_lossy(&result.stderr)
+            ));
+        }
+        Ok("已写入用户环境变量 PATH，重新打开终端后即可直接使用 node / git 命令".into())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
+        let export_line = format!("export PATH=\"{}:$PATH\"", new_paths.join(":"));
+        let marker = "# ClawPanel portable tools - DO NOT EDIT THIS LINE";
+        let block = format!("\n{marker}\n{export_line}\n");
+
+        let candidates = [".zshrc", ".bash_profile", ".bashrc", ".profile"];
+        let mut written: Vec<String> = Vec::new();
+        for name in &candidates {
+            let path = home.join(name);
+            if !path.exists() { continue; }
+
+            let content = fs::read_to_string(&path).unwrap_or_default();
+            if content.contains(marker) {
+                // 已写入过：找到 marker 后紧跟的 export PATH= 行，原地替换
+                let mut result = String::with_capacity(content.len());
+                let mut after_marker = false;
+                let mut replaced = false;
+                for line in content.lines() {
+                    if !replaced && line == marker {
+                        after_marker = true;
+                        result.push_str(line);
+                        result.push('\n');
+                    } else if after_marker && !replaced && line.starts_with("export PATH=") {
+                        result.push_str(&export_line);
+                        result.push('\n');
+                        replaced = true;
+                        after_marker = false;
+                    } else {
+                        result.push_str(line);
+                        result.push('\n');
+                    }
+                }
+                fs::write(&path, result).map_err(|e| format!("更新 {name} 失败: {e}"))?;
+                written.push(format!("{name}（已更新）"));
+            } else {
+                use std::io::Write as _;
+                fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .and_then(|mut f| f.write_all(block.as_bytes()))
+                    .map_err(|e| format!("写入 {name} 失败: {e}"))?;
+                written.push(name.to_string());
+            }
+        }
+
+        if written.is_empty() {
+            // 没有任何 shell 配置文件，新建 ~/.zshrc
+            fs::write(home.join(".zshrc"), format!("{block}\n"))
+                .map_err(|e| format!("创建 .zshrc 失败: {e}"))?;
+            written.push(".zshrc（新建）".to_string());
+        }
+
+        Ok(format!(
+            "已写入 {}，重新打开终端后即可直接使用 node 命令",
+            written.join("、")
+        ))
     }
 }
 

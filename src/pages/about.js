@@ -17,7 +17,7 @@ export async function render() {
       <img src="/images/openclaw-logo-text.png" alt="OpenClaw" style="height:48px;width:auto">
       <div>
         <h1 class="page-title" style="margin:0">OpenClaw</h1>
-        <p class="page-desc" style="margin:0">OpenClaw CLI 一键安装</p>
+        <p class="page-desc" style="margin:0">OpenClaw 快捷安装</p>
       </div>
     </div>
     <div class="stat-cards" id="version-cards">

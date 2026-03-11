@@ -66,7 +66,7 @@ export async function render() {
         <img src="/images/openclaw-logo-text.png" alt="OpenClaw" style="max-width:160px;width:100%;height:auto">
       </div>
       <p style="color:var(--text-secondary);margin-bottom:var(--space-xl);line-height:1.6">
-        OpenClaw CLI 一键安装
+        OpenClaw 快捷安装
       </p>
 
       <div id="setup-steps"></div>
@@ -239,13 +239,57 @@ function renderNodeInstallTabs() {
   return `
     <div style="margin-bottom:10px">
       <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border-primary);padding-bottom:8px">
-        <button class="btn btn-primary btn-sm node-install-tab" data-tab="auto" style="padding:4px 14px">自动安装（推荐）</button>
-        <button class="btn btn-secondary btn-sm node-install-tab" data-tab="cmd" style="padding:4px 14px">命令安装</button>
-        <button class="btn btn-secondary btn-sm node-install-tab" data-tab="manual" style="padding:4px 14px">手动安装</button>
+        <button class="btn btn-primary btn-sm node-install-tab" data-tab="manual" style="padding:4px 14px">官方安装包</button>
+        <button class="btn btn-secondary btn-sm node-install-tab" data-tab="auto" style="padding:4px 14px">便携版</button>
+        <button class="btn btn-secondary btn-sm node-install-tab" data-tab="cmd" style="padding:4px 14px">命令行安装</button>
+      </div>
+
+      <!-- 手动安装 tab（默认显示） -->
+      <div id="node-tab-manual">
+        <div class="form-hint" style="margin-bottom:10px;line-height:1.6">
+          自动识别当前系统，直接获取对应平台的最新 LTS 安装包下载链接。
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+          <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">下载源:</span>
+          <select id="manual-mirror-select" style="flex:1;padding:3px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-primary);background:var(--bg-secondary);color:var(--text-primary);font-size:var(--font-size-xs)">
+            <option value="cn">npmmirror 淘宝镜像（国内推荐）</option>
+            <option value="official">nodejs.org 官方</option>
+          </select>
+        </div>
+
+        <!-- Node.js 下载 -->
+        <div style="margin-bottom:12px">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:8px">Node.js LTS</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="btn-download-node-installer">
+              下载安装包
+            </button>
+            <span id="manual-node-detect" style="font-size:var(--font-size-xs);color:var(--text-secondary)"></span>
+          </div>
+        </div>
+
+        ${isWin ? `
+        <!-- Git 下载（仅 Windows） -->
+        <div style="border-top:1px solid var(--border-primary);padding-top:12px;margin-bottom:12px">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:8px">Git（OpenClaw 必需）</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="btn-download-git-installer">
+              下载安装包
+            </button>
+            <span id="manual-git-detect" style="font-size:var(--font-size-xs);color:var(--text-secondary)"></span>
+          </div>
+        </div>` : ''}
+
+        <ol style="margin:12px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2.2;border-top:1px solid var(--border-primary);padding-top:10px">
+          <li>点击上方按钮，浏览器自动打开下载链接</li>
+          <li>运行下载好的安装包，保持默认选项完成安装</li>
+          <li>完全退出并重启 ClawPanel</li>
+          <li>点击「重新检测」</li>
+        </ol>
       </div>
 
       <!-- 自动安装 tab -->
-      <div id="node-tab-auto">
+      <div id="node-tab-auto" style="display:none">
         <div class="form-hint" style="margin-bottom:10px;line-height:1.6">
           便携版绿色安装，不修改系统 PATH，安装后<strong>无需重启</strong>即可继续。
         </div>
@@ -282,6 +326,14 @@ function renderNodeInstallTabs() {
           </div>
           <div class="form-hint" style="line-height:1.5">MinGit 精简便携版，含 git 核心命令，约 40MB，不修改系统 PATH。</div>
         </div>` : ''}
+
+        <!-- 配置到系统 PATH（安装后可用） -->
+        <div style="border-top:1px solid var(--border-primary);margin-top:14px;padding-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" id="btn-add-to-system-path" style="min-width:200px">
+            配置到系统 PATH（终端直接可用）
+          </button>
+          <span class="form-hint" style="margin:0">安装后点击，重开终端即可用 <code>node</code>${isWin ? ' / <code>git</code>' : ''} 命令</span>
+        </div>
       </div>
 
       <!-- 命令安装 tab -->
@@ -294,8 +346,15 @@ function renderNodeInstallTabs() {
         <!-- winget -->
         <div id="pkgmgr-winget-section">
           <div class="form-hint" style="margin-bottom:8px;line-height:1.6">
-            <strong>winget</strong> 是 Windows 11 内置包管理器，无需配置镜像，国内可直接使用。<br>
-            安装完成后需<strong>重启 ClawPanel</strong>，然后点击「重新检测」。
+            <strong>winget</strong> 是 Windows 包管理器，安装完成后需<strong>重启 ClawPanel</strong>，然后点击「重新检测」。
+          </div>
+          <!-- Windows 10 用户提示 -->
+          <div style="background:var(--bg-tertiary);border:1px solid var(--color-warning,#f59e0b);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:10px;line-height:1.6;font-size:var(--font-size-xs)">
+            ⚠️ <strong>Windows 10 用户</strong>：winget 默认未内置，需先安装「应用安装程序」才能使用。
+            <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+              <button class="btn btn-secondary btn-sm" id="btn-open-ms-store-winget" style="font-size:11px;white-space:nowrap">打开微软商店 → 安装 winget</button>
+              <span style="color:var(--text-secondary)">安装后重启本应用，再使用下方命令</span>
+            </div>
           </div>
           <div style="margin-bottom:6px">
             <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">Node.js LTS：</div>
@@ -343,36 +402,6 @@ function renderNodeInstallTabs() {
             <button class="btn btn-secondary btn-sm" id="btn-open-admin-ps-choco">打开管理员 PowerShell</button>
             <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd='powershell -c "irm https://community.chocolatey.org/install.ps1|iex"&#10;choco install nodejs-lts git -y'>复制全部命令</button>
           </div>
-        </div>
-      </div>
-
-      <!-- 手动安装 tab -->
-      <div id="node-tab-manual" style="display:none">
-        <div style="margin-bottom:12px">
-          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:6px">Node.js</div>
-          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-            <a class="btn btn-primary btn-sm" href="https://nodejs.org/zh-cn/download/" target="_blank" rel="noopener">nodejs.org 官网下载</a>
-            <a class="btn btn-secondary btn-sm" href="https://npmmirror.com/mirrors/node/" target="_blank" rel="noopener">淘宝镜像（国内加速）</a>
-          </div>
-          <ol style="margin:6px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2">
-            <li>下载 <strong>LTS</strong> 版本安装程序（.msi 或 .pkg）</li>
-            <li>运行安装程序，保持默认选项，完成安装</li>
-            <li>完全退出并重启 ClawPanel</li>
-            <li>点击「重新检测」</li>
-          </ol>
-        </div>
-        <div style="border-top:1px solid var(--border-primary);padding-top:12px">
-          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:6px">Git（OpenClaw 需要）</div>
-          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-            <a class="btn btn-primary btn-sm" href="https://git-scm.com/download/win" target="_blank" rel="noopener">git-scm.com 官网下载</a>
-            <a class="btn btn-secondary btn-sm" href="https://registry.npmmirror.com/binary.html?path=git-for-windows/" target="_blank" rel="noopener">淘宝镜像（国内加速）</a>
-          </div>
-          <ol style="margin:6px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2">
-            <li>下载并运行安装程序</li>
-            <li>保持默认选项，一路 Next 完成安装</li>
-            <li>完全退出并重启 ClawPanel</li>
-            <li>点击「重新检测」</li>
-          </ol>
         </div>
       </div>
     </div>
@@ -546,6 +575,71 @@ function bindEvents(page, { nodeOk, cliOk }) {
     if (btn) btn.style.display = 'none'
   })
 
+  // 手动安装 — 平台检测 + 下载 Node.js 安装包
+  page.querySelector('#btn-download-node-installer')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget
+    const mirror = page.querySelector('#manual-mirror-select')?.value || 'cn'
+    const resultEl = page.querySelector('#manual-node-detect')
+    btn.disabled = true
+    btn.textContent = '获取版本中...'
+    try {
+      const version = await api.getLatestNodeLtsVersion()
+      const ua = navigator.userAgent.toLowerCase()
+      const isArm = ua.includes('arm') || ua.includes('aarch64')
+      const base = mirror === 'cn'
+        ? `https://registry.npmmirror.com/-/binary/node/v${version}`
+        : `https://nodejs.org/dist/v${version}`
+      let url, desc
+      if (isWindowsClient()) {
+        const arch = isArm ? 'arm64' : 'x64'
+        url = `${base}/node-v${version}-${arch}.msi`
+        desc = `Windows ${arch}`
+      } else if (isMacClient()) {
+        url = `${base}/node-v${version}.pkg`
+        desc = 'macOS (通用)'
+      } else {
+        const arch = isArm ? 'arm64' : 'x64'
+        url = `${base}/node-v${version}-linux-${arch}.tar.gz`
+        desc = `Linux ${arch}`
+      }
+      if (resultEl) resultEl.textContent = `v${version} · ${desc}`
+      const { open } = await import('@tauri-apps/plugin-shell')
+      await open(url)
+      toast(`正在打开下载链接：Node.js v${version} (${desc})`, 'success')
+    } catch (err) {
+      toast(`获取下载链接失败: ${err}`, 'error')
+    } finally {
+      btn.disabled = false
+      btn.textContent = '检测平台并下载安装包'
+    }
+  })
+
+  // 手动安装 — 平台检测 + 下载 Git 安装包（仅 Windows）
+  page.querySelector('#btn-download-git-installer')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget
+    const mirror = page.querySelector('#manual-mirror-select')?.value || 'cn'
+    const resultEl = page.querySelector('#manual-git-detect')
+    btn.disabled = true
+    btn.textContent = '获取版本中...'
+    try {
+      const version = await api.getLatestGitVersion()
+      const tag = `v${version}.windows.1`
+      const filename = `Git-${version}-64-bit.exe`
+      const url = mirror === 'cn'
+        ? `https://registry.npmmirror.com/-/binary/git-for-windows/${tag}/${filename}`
+        : `https://github.com/git-for-windows/git/releases/download/${tag}/${filename}`
+      if (resultEl) resultEl.textContent = `v${version} · Windows x64`
+      const { open } = await import('@tauri-apps/plugin-shell')
+      await open(url)
+      toast(`正在打开下载链接：Git v${version} (Windows x64)`, 'success')
+    } catch (err) {
+      toast(`获取下载链接失败: ${err}`, 'error')
+    } finally {
+      btn.disabled = false
+      btn.textContent = '检测平台并下载安装包'
+    }
+  })
+
   // 拼接子安装路径（根目录 + 子目录名）
   function joinInstallPath(root, sub) {
     if (!root) return null
@@ -556,7 +650,7 @@ function bindEvents(page, { nodeOk, cliOk }) {
   // 一键安装 Node.js（便携版）
   page.querySelector('#btn-auto-install-node')?.addEventListener('click', async (e) => {
     const mirror = page.querySelector('#node-mirror-select')?.value || 'cn'
-    const version = e.currentTarget.dataset.nodeVersion || '22.14.0'
+    const version = e.currentTarget.dataset.nodeVersion || '24.14.0'
     const root = page.querySelector('#root-install-path')?.value?.trim() || null
     const installPath = joinInstallPath(root, 'node')
     const modal = showUpgradeModal()
@@ -637,7 +731,22 @@ function bindEvents(page, { nodeOk, cliOk }) {
       )
       toast('已请求管理员权限，安装窗口正在打开...', 'success')
     } catch (e) {
-      toast(`启动失败: ${e}`, 'warning')
+      const msg = String(e)
+      if (msg.includes('winget') || msg.includes('不是内部或外部命令') || msg.includes('not recognized')) {
+        toast('未检测到 winget，Windows 10 用户请先点击"打开微软商店 → 安装 winget"', 'warning')
+      } else {
+        toast(`启动失败: ${msg}`, 'warning')
+      }
+    }
+  })
+
+  // 打开微软商店安装 winget（App Installer）
+  page.querySelector('#btn-open-ms-store-winget')?.addEventListener('click', async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell')
+      await open('ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1')
+    } catch {
+      toast('无法打开微软商店，请手动搜索「应用安装程序」安装', 'warning')
     }
   })
 
@@ -708,6 +817,23 @@ function bindEvents(page, { nodeOk, cliOk }) {
     } finally {
       unlistenLog?.()
       unlistenProgress?.()
+    }
+  })
+
+  // 配置到系统 PATH
+  page.querySelector('#btn-add-to-system-path')?.addEventListener('click', async () => {
+    const btn = page.querySelector('#btn-add-to-system-path')
+    const orig = btn.textContent
+    btn.disabled = true
+    btn.textContent = '配置中...'
+    try {
+      const msg = await api.addPortableToSystemPath()
+      toast(msg, 'success')
+    } catch (e) {
+      toast(String(e), 'error')
+    } finally {
+      btn.disabled = false
+      btn.textContent = orig
     }
   })
 
