@@ -12,6 +12,21 @@ const NPM_CMD = 'npm install -g @qingchencloud/openclaw-zh --registry https://re
 export function diagnoseInstallError(errStr) {
   const s = errStr.toLowerCase()
 
+  // ===== 0. cmake / xpm 下载失败（必须在所有其他检查之前，因为错误 tail 中不一定有完整的 [node-llama-cpp] 前缀行）=====
+  // 匹配依据：15行 tail 中必然出现的 xpm@^x.y.z 和 cmake 关键词
+  if (
+    s.includes('failed to download cmake') ||
+    (s.includes('xpm@') && s.includes('cmake')) ||
+    (s.includes('xpack-dev-tools/cmake') ) ||
+    (s.includes('xpm@') && s.includes('spawncommand.js'))
+  ) {
+    return {
+      title: '安装失败 — llama.cpp 编译工具下载失败',
+      hint: 'node-llama-cpp 尝试下载 cmake 编译工具，但 npm npx 缓存目录损坏导致失败。\n请清理 npm 缓存后重试（以管理员身份打开 PowerShell）：',
+      command: 'npm cache clean --force && ' + NPM_CMD,
+    }
+  }
+
   // ===== 1. Git 相关 =====
 
   // git SSH 权限问题（有 git 但没配 SSH Key）
@@ -32,7 +47,34 @@ export function diagnoseInstallError(errStr) {
     }
   }
 
-  // ===== 2. 文件 / 权限 =====
+  // ===== 2. node-llama-cpp 原生模块构建失败（比通用 ENOENT 更早匹配，避免误诊）=====
+
+  if (s.includes('[node-llama-cpp]') || s.includes('llama-addon.node') || s.includes('node-llama-cpp')) {
+    // 预构建二进制加载失败 → 缺少 Visual C++ 运行库
+    if (s.includes('err_dlopen_failed') || s.includes('the specified module could not be found')) {
+      return {
+        title: '安装失败 — 缺少 Visual C++ 运行库',
+        hint: 'llama.cpp 原生模块加载失败（ERR_DLOPEN_FAILED）。\n原因：系统缺少 Microsoft Visual C++ 2015-2022 Redistributable (x64)。\n\n请先安装运行库（二选一）：\n  方式一（命令行）：winget install Microsoft.VCRedist.2015+.x64\n  方式二（手动）：访问 https://aka.ms/vs/17/release/vc_redist.x64.exe 下载安装\n\n安装完成后重新执行：',
+        command: 'npm cache clean --force && ' + NPM_CMD,
+      }
+    }
+    // cmake / xpm 下载失败 → npm npx 缓存目录损坏
+    if (s.includes('failed to download cmake') || s.includes('xpack-dev-tools/cmake') || s.includes('xpm@') || s.includes('install @xpack-dev-tools')) {
+      return {
+        title: '安装失败 — llama.cpp 编译工具下载失败',
+        hint: 'node-llama-cpp 尝试下载 cmake 编译工具，但 npm npx 缓存目录损坏导致失败。\n请清理 npm 缓存后重试：',
+        command: 'npm cache clean --force && ' + NPM_CMD,
+      }
+    }
+    // 其他 node-llama-cpp 构建错误
+    return {
+      title: '安装失败 — llama.cpp 原生模块构建失败',
+      hint: '本地推理模块 (node-llama-cpp) 构建失败。请尝试：\n1. 安装 Visual C++ 2015-2022 运行库：winget install Microsoft.VCRedist.2015+.x64\n2. 清理缓存后重试：',
+      command: 'npm cache clean --force && ' + NPM_CMD,
+    }
+  }
+
+  // ===== 3. 文件 / 权限 =====
 
   // EPERM（文件被占用/权限问题）— 放在 ENOENT 前面，优先匹配
   if (s.includes('eperm') || s.includes('operation not permitted')) {
@@ -82,7 +124,7 @@ export function diagnoseInstallError(errStr) {
     }
   }
 
-  // ===== 3. 网络 =====
+  // ===== 4. 网络 =====
 
   if (s.includes('etimedout') || s.includes('econnrefused') || s.includes('enotfound')
     || s.includes('fetch failed') || s.includes('socket hang up')

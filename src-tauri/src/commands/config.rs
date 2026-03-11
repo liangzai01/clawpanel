@@ -718,6 +718,83 @@ pub async fn list_openclaw_versions(source: String) -> Result<Vec<String>, Strin
     Ok(versions)
 }
 
+/// Windows：检测并自动安装 Visual C++ 2015-2022 Redistributable (x64)
+/// node-llama-cpp 原生模块需要 vcruntime140.dll 才能加载
+/// 优先通过 winget，不可用时（Win10 早期/LTSC）直接从 Microsoft CDN 下载安装
+#[cfg(target_os = "windows")]
+async fn ensure_vcredist(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+    // vcruntime140.dll 存在即视为 VC++ 运行库已就绪
+    if std::path::Path::new(r"C:\Windows\System32\vcruntime140.dll").exists() {
+        return;
+    }
+    let _ = app.emit(
+        "upgrade-log",
+        "⚠️ 未检测到 Visual C++ 2015-2022 运行库，正在尝试自动安装...",
+    );
+
+    // 方式一：winget（Windows 10 1809+ / Windows 11 内置）
+    let winget_ok = Command::new("winget")
+        .args([
+            "install",
+            "--id",
+            "Microsoft.VCRedist.2015+.x64",
+            "--silent",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if winget_ok {
+        let _ = app.emit("upgrade-log", "✅ Visual C++ 2015-2022 运行库安装成功（winget）");
+        return;
+    }
+
+    // 方式二：直接从 Microsoft CDN 下载（兼容 Win10 无 winget 场景）
+    let _ = app.emit("upgrade-log", "winget 不可用，正在从 Microsoft 直接下载 VC++ 安装包...");
+    let tmp = std::env::temp_dir().join("vc_redist_x64.exe");
+    let url = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+
+    let downloaded = async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .ok()?;
+        let bytes = client.get(url).send().await.ok()?.bytes().await.ok()?;
+        std::fs::write(&tmp, &bytes).ok()?;
+        Some(())
+    }
+    .await
+    .is_some();
+
+    if !downloaded {
+        let _ = app.emit(
+            "upgrade-log",
+            "⚠️ 下载 VC++ 安装包失败，请手动安装后重试：\nhttps://aka.ms/vs/17/release/vc_redist.x64.exe",
+        );
+        return;
+    }
+
+    let status = Command::new(&tmp)
+        .args(["/install", "/quiet", "/norestart"])
+        .status();
+    let _ = std::fs::remove_file(&tmp);
+
+    match status {
+        Ok(s) if s.success() => {
+            let _ = app.emit("upgrade-log", "✅ Visual C++ 2015-2022 运行库安装成功");
+        }
+        _ => {
+            let _ = app.emit(
+                "upgrade-log",
+                "⚠️ 自动安装未成功，请手动安装后重试：\nhttps://aka.ms/vs/17/release/vc_redist.x64.exe",
+            );
+        }
+    }
+}
+
 /// 执行 npm 全局安装/升级/降级 openclaw（流式推送日志）
 #[tauri::command]
 pub async fn upgrade_openclaw(
@@ -758,6 +835,10 @@ pub async fn upgrade_openclaw(
             "git@github.com:",
         ])
         .output();
+
+    // Windows 下确保 VC++ 运行库已安装（node-llama-cpp 原生模块依赖）
+    #[cfg(target_os = "windows")]
+    ensure_vcredist(&app).await;
 
     let _ = app.emit("upgrade-log", format!("$ npm install -g {pkg}"));
     let _ = app.emit("upgrade-progress", 10);
@@ -824,20 +905,93 @@ pub async fn upgrade_openclaw(
             .code()
             .map(|c| c.to_string())
             .unwrap_or("unknown".into());
-        let _ = app.emit("upgrade-log", format!("❌ 升级失败 (exit code: {code})"));
-        // 把 stderr 最后 15 行带进错误消息，确保前端诊断函数能匹配到
-        // npm 内部错误码（如 -4058 ENOENT、EPERM 等）
-        let tail = stderr_lines
-            .lock()
-            .unwrap()
-            .iter()
-            .rev()
-            .take(15)
-            .rev()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Err(format!("升级失败，exit code: {code}\n{tail}"));
+
+        // 检查是否是 node-llama-cpp / cmake 构建失败
+        let is_llama_error = {
+            let lines = stderr_lines.lock().unwrap();
+            lines.iter().any(|l| {
+                l.contains("node-llama-cpp")
+                    || l.contains("llama-addon.node")
+                    || l.contains("xpm@")
+                    || l.contains("xpack-dev-tools/cmake")
+            })
+        };
+
+        if is_llama_error {
+            // llama.cpp 原生模块构建失败，跳过 postinstall 重试安装
+            let _ = app.emit(
+                "upgrade-log",
+                "⚠️ node-llama-cpp 构建失败（本地推理模块），跳过原生模块构建重试安装...",
+            );
+            let _ = app.emit("upgrade-progress", 82);
+
+            let app_re2 = app.clone();
+            let retry_ok = if let Ok(mut rc) = npm_command()
+                .args(["install", "-g", &pkg, "--registry", registry])
+                .env("NODE_LLAMA_CPP_SKIP_DOWNLOAD", "true")
+                .env("npm_config_ignore_scripts", "true")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+            {
+                let rse = rc.stderr.take();
+                let rso = rc.stdout.take();
+                let rh = std::thread::spawn(move || {
+                    if let Some(pipe) = rse {
+                        for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                            let _ = app_re2.emit("upgrade-log", &line);
+                        }
+                    }
+                });
+                if let Some(pipe) = rso {
+                    for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                        let _ = app.clone().emit("upgrade-log", &line);
+                    }
+                }
+                let _ = rh.join();
+                rc.wait().map(|s| s.success()).unwrap_or(false)
+            } else {
+                false
+            };
+
+            if retry_ok {
+                let _ = app.emit(
+                    "upgrade-log",
+                    "✅ 安装成功（已跳过本地推理模块，如需本地 LLM 推理请手动运行 node-llama-cpp 构建）",
+                );
+                let _ = app.emit("upgrade-progress", 100);
+                // 继续后续流程（卸载旧包等）
+            } else {
+                // 重试也失败，报告原始错误
+                let _ = app.emit("upgrade-log", format!("❌ 升级失败 (exit code: {code})"));
+                let tail = stderr_lines
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .rev()
+                    .take(15)
+                    .rev()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                return Err(format!("升级失败，exit code: {code}\n{tail}"));
+            }
+        } else {
+            let _ = app.emit("upgrade-log", format!("❌ 升级失败 (exit code: {code})"));
+            // 把 stderr 最后 15 行带进错误消息，确保前端诊断函数能匹配到
+            // npm 内部错误码（如 -4058 ENOENT、EPERM 等）
+            let tail = stderr_lines
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .take(15)
+                .rev()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!("升级失败，exit code: {code}\n{tail}"));
+        }
     }
 
     // 安装成功后再卸载旧包（确保 CLI 始终可用）
@@ -1228,12 +1382,24 @@ pub fn launch_openclaw_onboard_admin() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let cli_path = resolve_openclaw_cli_path()?;
         let ps_path = windows_powershell_path();
         let ps_escaped = ps_path.replace('\'', "''");
-        let cli_escaped = cli_path.replace('\'', "''");
+
+        // 优先用 node.exe + .js 路径，避免 PowerShell 调用 .cmd 时额外 spawn cmd.exe
+        let inner_cmd = if let Some(js_path) = resolve_openclaw_js_path() {
+            let node_exe = find_node_exe();
+            let node_esc = node_exe.replace('\'', "''");
+            let js_esc = js_path.replace('\'', "''");
+            format!("& ''{node_esc}'' ''{js_esc}'' onboard --install-daemon")
+        } else {
+            // 降级：直接调用 .cmd（会额外弹出 cmd 窗口，但不影响功能）
+            let cli_path = resolve_openclaw_cli_path()?;
+            let cli_esc = cli_path.replace('\'', "''");
+            format!("& ''{cli_esc}'' onboard --install-daemon")
+        };
+
         let script = format!(
-            "Start-Process -FilePath '{ps_escaped}' -Verb RunAs -ArgumentList @('-NoExit','-ExecutionPolicy','Bypass','-Command','& ''{cli_escaped}'' onboard --install-daemon')"
+            "Start-Process -FilePath '{ps_escaped}' -Verb RunAs -ArgumentList @('-NoExit','-ExecutionPolicy','Bypass','-Command','{inner_cmd}')"
         );
 
         Command::new(&ps_path)
@@ -1272,6 +1438,69 @@ pub fn launch_openclaw_onboard_admin() -> Result<String, String> {
     {
         Err("当前平台不支持自动打开终端，请手动执行 openclaw onboard --install-daemon".into())
     }
+}
+
+/// 从 openclaw.cmd shim 文件中提取真实的 .js 入口路径（避免 PowerShell 调用 .cmd 时 spawn cmd.exe）
+#[cfg(target_os = "windows")]
+fn resolve_openclaw_js_path() -> Option<String> {
+    let appdata = std::env::var("APPDATA").ok()?;
+    let npm_dir = std::path::Path::new(&appdata).join("npm");
+    let content = std::fs::read_to_string(npm_dir.join("openclaw.cmd")).ok()?;
+
+    // npm shim 末行形如：
+    //   endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%node_modules\pkg\bin\script.js" %*
+    // 其中 %dp0% 即 npm 目录，提取以 .js 结尾的引号内路径
+    for line in content.lines() {
+        if !line.contains(".js\"") {
+            continue;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '"' {
+                i += 1;
+                let j_start = i;
+                while i < chars.len() && chars[i] != '"' {
+                    i += 1;
+                }
+                let candidate: String = chars[j_start..i].iter().collect();
+                if candidate.ends_with(".js") {
+                    let npm_str = npm_dir.to_string_lossy();
+                    let resolved = candidate
+                        .replace("%dp0%\\", &format!("{}\\", npm_str))
+                        .replace("%dp0%/", &format!("{}/", npm_str))
+                        .replace("%dp0%", npm_str.as_ref());
+                    if std::path::Path::new(&resolved).exists() {
+                        return Some(resolved);
+                    }
+                }
+            } else {
+                i += 1;
+            }
+        }
+    }
+    None
+}
+
+/// 通过 where 命令查找 node.exe 完整路径，找不到则返回 "node"（由 PATH 解析）
+#[cfg(target_os = "windows")]
+fn find_node_exe() -> String {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    if let Ok(out) = Command::new("cmd")
+        .args(["/c", "where", "node.exe"])
+        .env("PATH", super::enhanced_path())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    {
+        if let Some(path) = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+        {
+            return path.to_string();
+        }
+    }
+    "node".to_string()
 }
 
 /// 打开空白的管理员 PowerShell（用于包管理器安装 Node.js / Git 等）

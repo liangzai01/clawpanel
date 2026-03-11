@@ -36,13 +36,13 @@ function getOnboardPlatformText() {
   }
   if (isWindowsClient()) {
     return {
-      openLabel: '管理员命令行',
-      openAction: '打开管理员命令行',
-      openHint: '可以直接从这里打开管理员命令行。',
-      success: '已打开管理员 PowerShell',
-      successCopied: '已打开管理员 PowerShell，命令也已复制',
-      fallback: '自动打开失败，请在管理员命令行中粘贴执行',
-      installDone: '安装完成。关闭后可在页面中的“初始化向导”卡片继续打开管理员命令行，并执行',
+      openLabel: '管理员 PowerShell',
+      openAction: '打开终端并执行初始化',
+      openHint: '可以直接从这里打开管理员 PowerShell 并自动执行初始化命令。',
+      success: '已打开管理员 PowerShell 并开始执行初始化',
+      successCopied: '已打开管理员 PowerShell 并开始执行初始化，命令也已复制',
+      fallback: '自动打开失败，请在管理员 PowerShell 中粘贴执行',
+      installDone: '安装完成。关闭后可在页面中的”初始化向导”卡片打开管理员 PowerShell 并自动执行',
     }
   }
   return {
@@ -120,7 +120,6 @@ function renderSteps(page, { node, git, cliOk, config }) {
   const nodeOk = node.installed
   const gitOk = git.installed
   const depsOk = nodeOk && gitOk
-  const allOk = depsOk && cliOk && config.installed
 
   let html = ''
 
@@ -162,10 +161,10 @@ function renderSteps(page, { node, git, cliOk, config }) {
   html += `
     <div class="config-section" style="text-align:left;${depsOk ? '' : 'opacity:0.4;pointer-events:none'}">
       <div class="config-section-title" style="display:flex;align-items:center;gap:4px">
-        ${stepIcon(cliOk)} OpenClaw CLI
+        ${stepIcon(cliOk)} 安装OpenClaw CLI
       </div>
       ${cliOk
-        ? `<p style="color:var(--success);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">CLI npm 包已可用</p>${renderOnboardActionCard(true)}`
+        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">CLI npm 包已可用</p>`
         : renderInstallSection()
       }
     </div>
@@ -177,22 +176,12 @@ function renderSteps(page, { node, git, cliOk, config }) {
         ${stepIcon(config.installed)} 初始化向导
       </div>
       ${config.installed
-        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">已完成初始化，配置文件位于 ${config.path || ''}</p>`
-        : `<p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:0">
-            还没有完成初始化。请在上方卡片中打开终端，或复制命令后手动执行 <code>${getOnboardCommand()}</code>。
-          </p>`
+        ? `<p style="color:var(--success);font-size:var(--font-size-sm);margin-bottom:var(--space-sm)">已完成初始化，配置文件位于 ${config.path || ''}</p>`
+        : ''
       }
+      ${renderOnboardActionCard(cliOk)}
     </div>
   `
-
-  // 全部就绪 → 进入面板
-  if (allOk) {
-    html += `
-      <div style="margin-top:var(--space-lg)">
-        <button class="btn btn-primary" id="btn-enter" style="min-width:200px">进入面板</button>
-      </div>
-    `
-  }
 
   stepsEl.innerHTML = html
   bindEvents(page, { nodeOk, cliOk })
@@ -526,7 +515,6 @@ function renderInstallSection() {
       </select>
     </div>
     <button class="btn btn-primary btn-sm" id="btn-install">一键安装</button>
-    ${renderOnboardActionCard(false)}
     ${envHint}
   `
 }
@@ -540,12 +528,8 @@ function renderOnboardActionCard(cliOk) {
 
   return `
     <div style="margin-top:var(--space-md);padding:12px;border:1px solid var(--border-primary);border-radius:var(--radius-md);background:var(--bg-tertiary)">
-      <div style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text-primary);margin-bottom:6px">
-        ${icon('terminal', 14)}
-        <span>初始化向导</span>
-      </div>
       <div style="font-size:var(--font-size-sm);color:var(--text-secondary);line-height:1.7;margin-bottom:10px">
-        安装完成后，请执行 <code>${onboardCommand}</code> 完成初始化。
+        请执行 <code>${onboardCommand}</code> 完成初始化。
         ${canAutoLaunch ? platformText.openHint : '如果当前环境不支持自动打开，请复制命令后手动执行。'}
       </div>
       <div style="background:var(--bg-secondary);border-radius:var(--radius-sm);padding:8px 10px;font-family:monospace;font-size:12px;color:var(--text-primary);word-break:break-all;margin-bottom:10px">${onboardCommand}</div>
@@ -554,7 +538,7 @@ function renderOnboardActionCard(cliOk) {
         <button class="btn btn-secondary btn-sm btn-copy-onboard" ${cliOk ? '' : 'disabled'}>复制命令</button>
       </div>
       ${cliOk
-        ? '<div class="form-hint" style="margin-top:8px">完成后点击页面底部的“重新检测”更新状态。</div>'
+        ? '<div class="form-hint" style="margin-top:8px">完成后点击页面底部的"重新检测"更新状态。</div>'
         : '<div class="form-hint" style="margin-top:8px">请先完成上方 OpenClaw CLI 安装，随后这里的按钮会自动可用。</div>'
       }
     </div>
@@ -586,10 +570,6 @@ async function openOnboardCommand() {
 }
 
 function bindEvents(page, { nodeOk, cliOk }) {
-  // 进入面板
-  page.querySelector('#btn-enter')?.addEventListener('click', () => {
-    navigate('/chat-debug')
-  })
 
   if (cliOk) {
     page.querySelectorAll('.btn-copy-onboard').forEach((btn) => {
