@@ -1626,10 +1626,11 @@ pub async fn install_node_portable(
     let _ = app.emit("upgrade-log", format!("下载完成（{dl_mb}MB），正在解压..."));
     let _ = app.emit("upgrade-progress", 58);
 
+    // 确保 openclaw_dir 和 install_base 均存在（首次安装时目录可能未创建）
+    fs::create_dir_all(super::openclaw_dir()).map_err(|e| format!("创建基础目录失败: {e}"))?;
+    fs::create_dir_all(&install_base).map_err(|e| format!("创建安装目录失败: {e}"))?;
     fs::write(&tmp_path, &buf).map_err(|e| format!("保存临时文件失败: {e}"))?;
     drop(buf);
-
-    fs::create_dir_all(&install_base).map_err(|e| format!("创建安装目录失败: {e}"))?;
 
     #[cfg(target_os = "windows")]
     {
@@ -1890,10 +1891,11 @@ pub async fn install_git_portable(
         let _ = app.emit("upgrade-log", format!("下载完成（{dl_mb}MB），正在解压..."));
         let _ = app.emit("upgrade-progress", 58);
 
+        // 确保 openclaw_dir 和 install_base 均存在（首次安装时目录可能未创建）
+        fs::create_dir_all(super::openclaw_dir()).map_err(|e| format!("创建基础目录失败: {e}"))?;
+        fs::create_dir_all(&install_base).map_err(|e| format!("创建安装目录失败: {e}"))?;
         fs::write(&tmp_path, &buf).map_err(|e| format!("保存临时文件失败: {e}"))?;
         drop(buf);
-
-        fs::create_dir_all(&install_base).map_err(|e| format!("创建安装目录失败: {e}"))?;
 
         let file = fs::File::open(&tmp_path).map_err(|e| format!("打开压缩包失败: {e}"))?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取 ZIP 失败: {e}"))?;

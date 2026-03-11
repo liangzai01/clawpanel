@@ -249,24 +249,27 @@ function renderNodeInstallTabs() {
         <div class="form-hint" style="margin-bottom:10px;line-height:1.6">
           便携版绿色安装，不修改系统 PATH，安装后<strong>无需重启</strong>即可继续。
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <button class="btn btn-primary btn-sm" id="btn-auto-install-node" disabled style="min-width:180px">
-            一键安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
-          </button>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">根目录:</span>
+          <input id="root-install-path" type="text"
+            value="${isWin ? 'D:\\openclaw' : '~/openclaw'}"
+            style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
+          <button class="btn btn-secondary btn-sm" id="btn-pick-root-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <div class="form-hint" style="margin-bottom:8px">
+          将在此目录下自动创建 <code>node</code>${isWin ? '、<code>git</code>' : ''} 子目录（不存在时自动创建）
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
           <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">镜像源:</span>
           <select id="node-mirror-select" style="flex:1;padding:3px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-primary);background:var(--bg-secondary);color:var(--text-primary);font-size:var(--font-size-xs)">
             <option value="cn">npmmirror 淘宝镜像（国内推荐）</option>
             <option value="official">nodejs.org 官方</option>
           </select>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-          <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">安装目录:</span>
-          <input id="node-install-path" type="text"
-            value="${isWin ? 'D:\\.openclaw\\node' : '~/.openclaw/node'}"
-            style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
-          <button class="btn btn-secondary btn-sm" id="btn-pick-node-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn btn-primary btn-sm" id="btn-auto-install-node" disabled style="min-width:180px">
+            一键安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
+          </button>
         </div>
 
         <!-- Git 安装（仅 Windows） -->
@@ -276,13 +279,6 @@ function renderNodeInstallTabs() {
             <button class="btn btn-primary btn-sm" id="btn-auto-install-git" disabled style="min-width:180px">
               一键安装 Git <span id="git-lts-ver" style="opacity:0.7">MinGit</span>
             </button>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">安装目录:</span>
-            <input id="git-install-path" type="text"
-              value="D:\\.openclaw\\git"
-              style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
-            <button class="btn btn-secondary btn-sm" id="btn-pick-git-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
           </div>
           <div class="form-hint" style="line-height:1.5">MinGit 精简便携版，含 git 核心命令，约 40MB，不修改系统 PATH。</div>
         </div>` : ''}
@@ -550,11 +546,19 @@ function bindEvents(page, { nodeOk, cliOk }) {
     if (btn) btn.style.display = 'none'
   })
 
+  // 拼接子安装路径（根目录 + 子目录名）
+  function joinInstallPath(root, sub) {
+    if (!root) return null
+    const sep = root.includes('\\') ? '\\' : '/'
+    return root.replace(/[/\\]+$/, '') + sep + sub
+  }
+
   // 一键安装 Node.js（便携版）
   page.querySelector('#btn-auto-install-node')?.addEventListener('click', async (e) => {
     const mirror = page.querySelector('#node-mirror-select')?.value || 'cn'
     const version = e.currentTarget.dataset.nodeVersion || '22.14.0'
-    const installPath = page.querySelector('#node-install-path')?.value?.trim() || null
+    const root = page.querySelector('#root-install-path')?.value?.trim() || null
+    const installPath = joinInstallPath(root, 'node')
     const modal = showUpgradeModal()
     let unlistenLog, unlistenProgress
 
@@ -662,25 +666,12 @@ function bindEvents(page, { nodeOk, cliOk }) {
   page.querySelector('#btn-open-admin-ps-winget')?.addEventListener('click', openAdminPs)
   page.querySelector('#btn-open-admin-ps-choco')?.addEventListener('click', openAdminPs)
 
-  // 浏览选择安装目录
-  page.querySelector('#btn-pick-node-dir')?.addEventListener('click', async () => {
+  // 浏览选择根安装目录
+  page.querySelector('#btn-pick-root-dir')?.addEventListener('click', async () => {
     try {
-      const selected = await api.pickDirectory('选择 Node.js 安装目录')
+      const selected = await api.pickDirectory('选择便携版工具根目录')
       if (selected) {
-        const input = page.querySelector('#node-install-path')
-        if (input) input.value = selected
-      }
-    } catch (e) {
-      toast('目录选择失败，请手动输入路径', 'warning')
-    }
-  })
-
-  // 浏览选择 Git 安装目录
-  page.querySelector('#btn-pick-git-dir')?.addEventListener('click', async () => {
-    try {
-      const selected = await api.pickDirectory('选择 Git 安装目录')
-      if (selected) {
-        const input = page.querySelector('#git-install-path')
+        const input = page.querySelector('#root-install-path')
         if (input) input.value = selected
       }
     } catch (e) {
@@ -692,7 +683,8 @@ function bindEvents(page, { nodeOk, cliOk }) {
   page.querySelector('#btn-auto-install-git')?.addEventListener('click', async (e) => {
     const mirror = page.querySelector('#node-mirror-select')?.value || 'cn'
     const version = e.currentTarget.dataset.gitVersion || '2.48.1'
-    const installPath = page.querySelector('#git-install-path')?.value?.trim() || null
+    const root = page.querySelector('#root-install-path')?.value?.trim() || null
+    const installPath = joinInstallPath(root, 'git')
     const modal = showUpgradeModal()
     let unlistenLog, unlistenProgress
 
