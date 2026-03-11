@@ -34,17 +34,23 @@ fn build_enhanced_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
     let home = dirs::home_dir().unwrap_or_default();
 
-    // 读取用户保存的自定义 Node.js 路径
-    let custom_path = openclaw_dir()
+    // 读取用户保存的自定义 Node.js / Git 路径
+    let clawpanel_cfg = openclaw_dir()
         .join("clawpanel.json")
         .exists()
         .then(|| {
             std::fs::read_to_string(openclaw_dir().join("clawpanel.json"))
                 .ok()
                 .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                .and_then(|v| v.get("nodePath")?.as_str().map(String::from))
         })
         .flatten();
+    let custom_path = clawpanel_cfg
+        .as_ref()
+        .and_then(|v| v.get("nodePath")?.as_str().map(String::from));
+    #[cfg(target_os = "windows")]
+    let custom_git_cmd = clawpanel_cfg
+        .as_ref()
+        .and_then(|v| v.get("gitPath")?.as_str().map(|p| format!(r"{}\cmd", p)));
 
     #[cfg(target_os = "macos")]
     {
@@ -246,6 +252,11 @@ fn build_enhanced_path() -> String {
         }
         if let Some(ref cp) = custom_path {
             parts.push(cp.as_str());
+        }
+        if let Some(ref gp) = custom_git_cmd {
+            if std::path::Path::new(gp).exists() {
+                parts.push(gp.as_str());
+            }
         }
         for p in &extra {
             if std::path::Path::new(p).exists() {

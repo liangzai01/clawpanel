@@ -45,19 +45,33 @@ fn get_configured_registry() -> String {
 fn npm_command() -> Command {
     let registry = get_configured_registry();
 
-    // 始终从 clawpanel.json 读取最新 nodePath，绕过 OnceLock 缓存。
-    // 若使用 enhanced_path()，便携版安装后 PATH 缓存已固化，npm 会找不到。
-    let portable_node_dir = std::fs::read_to_string(super::openclaw_dir().join("clawpanel.json"))
+    // 始终从 clawpanel.json 读取最新路径，绕过 OnceLock 缓存。
+    // 若使用 enhanced_path()，便携版安装后 PATH 缓存已固化，npm / git 会找不到。
+    let clawpanel_cfg = std::fs::read_to_string(super::openclaw_dir().join("clawpanel.json"))
         .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    let portable_node_dir = clawpanel_cfg
+        .as_ref()
         .and_then(|v| v.get("nodePath")?.as_str().map(String::from));
+    // gitPath 保存的是 MinGit 根目录，git.exe 在其 cmd\ 子目录
+    #[cfg(target_os = "windows")]
+    let portable_git_cmd_dir = clawpanel_cfg
+        .as_ref()
+        .and_then(|v| v.get("gitPath")?.as_str().map(|p| format!(r"{}\cmd", p)));
 
     let base_path = std::env::var("PATH").unwrap_or_default();
 
     #[cfg(target_os = "windows")]
-    let effective_path = match &portable_node_dir {
-        Some(p) => format!("{};{}", p, base_path),
-        None => super::enhanced_path(),
+    let effective_path = {
+        let mut prepend: Vec<String> = vec![];
+        if let Some(p) = &portable_node_dir { prepend.push(p.clone()); }
+        if let Some(p) = &portable_git_cmd_dir { prepend.push(p.clone()); }
+        if prepend.is_empty() {
+            super::enhanced_path()
+        } else {
+            prepend.push(base_path);
+            prepend.join(";")
+        }
     };
     #[cfg(not(target_os = "windows"))]
     let effective_path = match &portable_node_dir {
@@ -1534,8 +1548,8 @@ async fn fetch_lts_version_inner() -> Option<String> {
         .ok()?;
     // 淘宝镜像优先（对国内用户更快），失败回退官方
     let urls = [
-        "https://registry.npmmirror.com/-/binary/node/latest-v22.x/SHASUMS256.txt",
-        "https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt",
+        "https://registry.npmmirror.com/-/binary/node/latest-v24.x/SHASUMS256.txt",
+        "https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt",
     ];
     for url in urls {
         if let Ok(resp) = client.get(url).send().await {
