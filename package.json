@@ -1,8 +1,8 @@
 {
-  "name": "clawpanel",
+  "name": "claw-installer",
   "version": "0.7.2",
   "private": true,
-  "description": "ClawPanel - OpenClaw 可视化管理面板，基于 Tauri v2 的跨平台桌面应用",
+  "description": "ClawInstaller - OpenClaw 安装向导，基于 Tauri v2 的跨平台桌面应用",
   "type": "module",
   "author": "qingchencloud",
   "license": "MIT",

@@ -182,7 +182,7 @@ fn resolve_openclaw_cli_path() -> Result<String, String> {
 
     let out = cmd.output().map_err(|e| format!("查找 openclaw 失败: {e}"))?;
     if !out.status.success() {
-        return Err("未找到 openclaw CLI，请安装完成后重启 ClawPanel 再试".into());
+        return Err("未找到 openclaw CLI，请安装完成后重启 ClawInstaller 再试".into());
     }
 
     String::from_utf8_lossy(&out.stdout)
@@ -202,7 +202,7 @@ fn resolve_openclaw_cli_path() -> Result<String, String> {
         .map_err(|e| format!("查找 openclaw 失败: {e}"))?;
 
     if !out.status.success() {
-        return Err("未找到 openclaw CLI，请确认已安装并重启 ClawPanel 再试".into());
+        return Err("未找到 openclaw CLI，请确认已安装并重启 ClawInstaller 再试".into());
     }
 
     String::from_utf8_lossy(&out.stdout)
@@ -1323,7 +1323,7 @@ pub fn check_node() -> Result<Value, String> {
     let mut result = serde_json::Map::new();
 
     // 优先直接读 clawpanel.json 中保存的自定义路径，不走 enhanced_path 缓存
-    // 这样便携安装完成后无需重启 ClawPanel 即可立即检测到
+    // 这样便携安装完成后无需重启 ClawInstaller 即可立即检测到
     let custom_dir = super::openclaw_dir()
         .join("clawpanel.json")
         .exists()
@@ -1558,7 +1558,7 @@ pub fn run_powershell_script_as_admin(commands: String) -> Result<String, String
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         let tmp = std::env::temp_dir().join("openclaw_setup_install.ps1");
         let script_content = format!(
-            "{}\r\nWrite-Host ''\r\nWrite-Host 'Done! Close this window and click Re-detect in ClawPanel.' -ForegroundColor Green\r\nRead-Host 'Press Enter to close'",
+            "{}\r\nWrite-Host ''\r\nWrite-Host 'Done! Close this window and click Re-detect in ClawInstaller.' -ForegroundColor Green\r\nRead-Host 'Press Enter to close'",
             commands
         );
         // 写入 UTF-8 BOM，确保 Windows PowerShell 5 能正确读取
@@ -2277,7 +2277,7 @@ pub fn add_portable_to_system_path() -> Result<String, String> {
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
         let export_line = format!("export PATH=\"{}:$PATH\"", new_paths.join(":"));
-        let marker = "# ClawPanel portable tools - DO NOT EDIT THIS LINE";
+        let marker = "# ClawInstaller portable tools - DO NOT EDIT THIS LINE";
         let block = format!("\n{marker}\n{export_line}\n");
 
         let candidates = [".zshrc", ".bash_profile", ".bashrc", ".profile"];
@@ -2790,12 +2790,12 @@ pub fn patch_model_vision() -> Result<bool, String> {
     Ok(changed)
 }
 
-/// 检查 ClawPanel 自身是否有新版本（通过 GitHub releases API）
+/// 检查 ClawInstaller 自身是否有新版本（通过 GitHub releases API）
 #[tauri::command]
 pub async fn check_panel_update() -> Result<Value, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
-        .user_agent("ClawPanel")
+        .user_agent("ClawInstaller")
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
 

@@ -1,15 +1,15 @@
 [package]
-name = "clawpanel"
+name = "claw-installer"
 version = "0.7.2"
 edition = "2021"
-description = "ClawPanel - OpenClaw 可视化管理面板"
+description = "ClawInstaller - OpenClaw 安装向导"
 authors = ["qingchencloud"]
 repository = "https://github.com/qingchencloud/clawpanel"
 homepage = "https://github.com/qingchencloud/clawpanel"
 license = "MIT"
 
 [lib]
-name = "clawpanel_lib"
+name = "claw_installer_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

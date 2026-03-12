@@ -39,7 +39,7 @@ async function loadData(page) {
       api.checkInstallation(),
     ])
 
-    // 尝试从 Tauri API 获取 ClawPanel 自身版本号，失败则 fallback
+    // 尝试从 Tauri API 获取 ClawInstaller 自身版本号，失败则 fallback
     let panelVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.0'
     try {
       const { getVersion } = await import('@tauri-apps/api/app')
@@ -487,7 +487,7 @@ function renderContribute(page) {
   const el = page.querySelector('#contribute-section')
   el.innerHTML = `
     <div style="font-size:var(--font-size-sm);color:var(--text-secondary);margin-bottom:12px">
-      ClawPanel 是开源项目，欢迎参与贡献！遇到问题请提 Issue，功能建议和代码改进欢迎提 PR。
+      ClawInstaller 是开源项目，欢迎参与贡献！遇到问题请提 Issue，功能建议和代码改进欢迎提 PR。
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <a class="btn btn-primary btn-sm" href="https://github.com/qingchencloud/clawpanel/issues/new" target="_blank" rel="noopener">提交 Issue</a>

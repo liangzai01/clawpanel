@@ -13,7 +13,7 @@ pub async fn list_agents() -> Result<Value, String> {
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                "OpenClaw CLI 未找到，请确认已安装并重启 ClawPanel。\n如果使用 nvm 安装，请从终端启动 ClawPanel。".to_string()
+                "OpenClaw CLI 未找到，请确认已安装并重启 ClawInstaller。\n如果使用 nvm 安装，请从终端启动 ClawInstaller。".to_string()
             } else {
                 format!("执行失败: {e}")
             }
@@ -64,7 +64,7 @@ pub async fn add_agent(
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                "OpenClaw CLI 未找到，请确认已安装并重启 ClawPanel。".to_string()
+                "OpenClaw CLI 未找到，请确认已安装并重启 ClawInstaller。".to_string()
             } else {
                 format!("执行失败: {e}")
             }
@@ -94,7 +94,7 @@ pub async fn delete_agent(id: String) -> Result<String, String> {
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                "OpenClaw CLI 未找到，请确认已安装并重启 ClawPanel。".to_string()
+                "OpenClaw CLI 未找到，请确认已安装并重启 ClawInstaller。".to_string()
             } else {
                 format!("执行失败: {e}")
             }

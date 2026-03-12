@@ -1,6 +1,6 @@
-// ClawPanel 入口
+// ClawInstaller 入口
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    clawpanel_lib::run()
+    claw_installer_lib::run()
 }

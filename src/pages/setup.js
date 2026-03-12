@@ -66,7 +66,7 @@ export async function render() {
         <img src="/images/openclaw-logo-text.png" alt="OpenClaw" style="max-width:160px;width:100%;height:auto">
       </div>
       <p style="color:var(--text-secondary);margin-bottom:var(--space-xl);line-height:1.6">
-        OpenClaw 快捷安装
+        OpenClaw 安装向导 — 帮你完成运行环境配置、CLI 安装与初始化
       </p>
 
       <div id="setup-steps"></div>
@@ -164,7 +164,7 @@ function renderSteps(page, { node, git, cliOk, config }) {
         ${stepIcon(cliOk)} 安装OpenClaw CLI
       </div>
       ${cliOk
-        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">CLI npm 包已可用</p>`
+        ? `<p style="color:var(--success);font-size:var(--font-size-sm)">OpenClaw CLI 已安装</p>`
         : renderInstallSection()
       }
     </div>
@@ -299,13 +299,13 @@ function renderNodeInstallTabs() {
               <button class="btn btn-secondary btn-sm copy-cmd-btn" data-cmd="sudo yum install git" style="font-size:11px;padding:2px 8px;white-space:nowrap">复制</button>
             </div>
           </div>`}
-          <div class="form-hint" style="margin-top:8px">安装后重启 ClawPanel，点击「重新检测」</div>
+          <div class="form-hint" style="margin-top:8px">安装后重启 ClawInstaller，点击「重新检测」</div>
         </div>`}
 
         <ol style="margin:12px 0 0 18px;padding:0;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:2.2;border-top:1px solid var(--border-primary);padding-top:10px">
           <li>点击上方按钮，浏览器自动打开下载链接</li>
           <li>运行下载好的安装包，保持默认选项完成安装</li>
-          <li>完全退出并重启 ClawPanel</li>
+          <li>完全退出并重启 ClawInstaller</li>
           <li>点击「重新检测」</li>
         </ol>
       </div>
@@ -368,7 +368,7 @@ function renderNodeInstallTabs() {
         <!-- winget -->
         <div id="pkgmgr-winget-section">
           <div class="form-hint" style="margin-bottom:8px;line-height:1.6">
-            <strong>winget</strong> 是 Windows 包管理器，安装完成后需<strong>重启 ClawPanel</strong>，然后点击「重新检测」。
+            <strong>winget</strong> 是 Windows 包管理器，安装完成后需<strong>重启 ClawInstaller</strong>，然后点击「重新检测」。
           </div>
           <!-- Windows 10 用户提示 -->
           <div style="background:var(--bg-tertiary);border:1px solid var(--color-warning,#f59e0b);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:10px;line-height:1.6;font-size:var(--font-size-xs)">
@@ -403,7 +403,7 @@ function renderNodeInstallTabs() {
         <div id="pkgmgr-choco-section" style="display:none">
           <div class="form-hint" style="margin-bottom:8px;line-height:1.6">
             <strong>Chocolatey</strong> 是 Windows 上流行的社区包管理器，首次使用需先安装 Chocolatey 本身。<br>
-            安装完成后需<strong>重启 ClawPanel</strong>，然后点击「重新检测」。
+            安装完成后需<strong>重启 ClawInstaller</strong>，然后点击「重新检测」。
           </div>
           <div style="margin-bottom:6px">
             <div style="font-size:var(--font-size-xs);color:var(--text-secondary);margin-bottom:3px">步骤 1 — 安装 Chocolatey（管理员运行）：</div>
@@ -440,7 +440,7 @@ function renderInstallSection() {
     envHint = `
       <div style="margin-top:var(--space-sm);padding:10px 12px;background:var(--bg-tertiary);border-radius:var(--radius-sm);border-left:3px solid var(--warning);font-size:var(--font-size-xs);color:var(--text-secondary);line-height:1.7">
         <strong style="color:var(--text-primary)">找不到已安装的 OpenClaw？</strong>
-        <p style="margin:6px 0 2px">ClawPanel 桌面版只能管理<strong>本机</strong>安装的 OpenClaw。以下环境中的安装无法被检测到：</p>
+        <p style="margin:6px 0 2px">本机安装向导仅能为<strong>当前机器</strong>安装 OpenClaw。以下环境中的安装需要单独操作：</p>
         <ul style="margin:4px 0 8px 16px;padding:0">
           ${isWin ? `
             <li><strong>WSL (Windows 子系统)</strong> — OpenClaw 装在 WSL 里，Windows 侧无法访问</li>
@@ -456,20 +456,20 @@ function renderInstallSection() {
         </ul>
         <details style="cursor:pointer">
           <summary style="font-weight:600;color:var(--primary);margin-bottom:6px">
-            在对应环境中安装管理面板
+            在其他环境中安装 OpenClaw
           </summary>
           <div style="margin-top:8px">
             ${isWin ? `
               <div style="margin-bottom:10px">
                 <div style="font-weight:600;margin-bottom:4px">WSL 中使用 Web 版：</div>
-                <div style="margin-bottom:2px;opacity:0.8">打开 WSL 终端，一键部署 ClawPanel Web 版：</div>
+                <div style="margin-bottom:2px;opacity:0.8">打开 WSL 终端，一键部署 OpenClaw + 管理面板 Web 版：</div>
                 <code style="display:block;background:var(--bg-secondary);padding:6px 10px;border-radius:4px;user-select:all;word-break:break-all">curl -fsSL https://raw.githubusercontent.com/qingchencloud/clawpanel/main/deploy.sh | bash</code>
                 <div style="margin-top:4px;opacity:0.7">部署后在浏览器访问 WSL 的 IP 即可管理。</div>
               </div>
             ` : ''}
             <div style="margin-bottom:10px">
               <div style="font-weight:600;margin-bottom:4px">Docker 容器中使用：</div>
-              <div style="margin-bottom:2px;opacity:0.8">在容器内安装 OpenClaw + ClawPanel Web 版：</div>
+              <div style="margin-bottom:2px;opacity:0.8">在容器内安装 OpenClaw + 管理面板 Web 版：</div>
               <code style="display:block;background:var(--bg-secondary);padding:6px 10px;border-radius:4px;user-select:all;word-break:break-all;margin-bottom:4px">npm i -g @qingchencloud/openclaw-zh</code>
               <code style="display:block;background:var(--bg-secondary);padding:6px 10px;border-radius:4px;user-select:all;word-break:break-all">curl -fsSL https://raw.githubusercontent.com/qingchencloud/clawpanel/main/deploy.sh | bash</code>
             </div>

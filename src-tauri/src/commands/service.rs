@@ -476,7 +476,7 @@ mod platform {
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    "OpenClaw CLI 未找到，请确认已安装并重启 ClawPanel。".to_string()
+                    "OpenClaw CLI 未找到，请确认已安装并重启 ClawInstaller。".to_string()
                 } else {
                     format!("启动 Gateway 失败: {e}")
                 }
@@ -798,7 +798,7 @@ mod platform {
 
         let _ = writeln!(
             stdout_log,
-            "\n[{}] [ClawPanel] Hidden-start Gateway on Windows",
+            "\n[{}] [ClawInstaller] Hidden-start Gateway on Windows",
             chrono::Local::now().to_rfc3339()
         );
 

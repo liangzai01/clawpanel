@@ -149,7 +149,7 @@ pub fn run() {
             update::get_update_status,
         ])
         .build(tauri::generate_context!())
-        .expect("启动 ClawPanel 失败")
+        .expect("启动 ClawInstaller 失败")
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
                 #[cfg(target_os = "windows")]

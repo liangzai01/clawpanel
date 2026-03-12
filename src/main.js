@@ -1,5 +1,5 @@
 /**
- * ClawPanel 入口
+ * ClawInstaller 入口
  */
 import { registerRoute, initRouter, navigate, setDefaultRoute } from './router.js'
 import { renderSidebar, openMobileSidebar } from './components/sidebar.js'
@@ -74,7 +74,7 @@ function showLoginOverlay(defaultPw) {
   overlay.innerHTML = `
     <div class="login-card">
       ${_logoSvg}
-      <div class="login-title">ClawPanel</div>
+      <div class="login-title">ClawInstaller</div>
       <div class="login-desc">${hasDefault
         ? '首次使用，默认密码已自动填充<br><span style="font-size:12px;color:#6366f1;font-weight:600">登录后请前往「安全设置」修改密码</span>'
         : (isTauri ? '应用已锁定，请输入密码' : '请输入访问密码')}</div>
@@ -231,7 +231,7 @@ async function boot() {
     <button class="mobile-hamburger" id="btn-mobile-menu">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
-    <span class="mobile-topbar-title">ClawPanel</span>
+    <span class="mobile-topbar-title">ClawInstaller</span>
   `
   topbar.querySelector('.mobile-hamburger').addEventListener('click', openMobileSidebar)
   mainCol.prepend(topbar)
@@ -479,7 +479,7 @@ async function checkGlobalUpdate() {
       <div class="update-banner-content">
         <div class="update-banner-text">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span class="update-banner-ver">ClawPanel v${ver} 可用</span>
+          <span class="update-banner-ver">ClawInstaller v${ver} 可用</span>
           ${changelog ? `<span class="update-banner-changelog">· ${changelog}</span>` : ''}
         </div>
         ${isWeb
@@ -514,7 +514,7 @@ npm run build
 sudo systemctl restart clawpanel</pre>
             <p style="margin-top:12px;color:var(--text-tertiary);font-size:var(--font-size-xs)">
               如果 git pull 失败，可先执行 <code style="background:var(--bg-tertiary);padding:2px 6px;border-radius:4px">git checkout -- .</code> 丢弃本地修改。<br>
-              路径请替换为实际的 ClawPanel 安装目录。
+              路径请替换为实际的 ClawInstaller 安装目录。
             </p>
           </div>
           <div class="modal-actions">

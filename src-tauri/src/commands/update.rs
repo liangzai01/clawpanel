@@ -17,7 +17,7 @@ const LATEST_JSON_URL: &str = "https://claw.qt.cool/update/latest.json";
 pub async fn check_frontend_update() -> Result<Value, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("ClawPanel")
+        .user_agent("ClawInstaller")
         .build()
         .map_err(|e| format!("HTTP 客户端错误: {e}"))?;
 
@@ -66,7 +66,7 @@ pub async fn check_frontend_update() -> Result<Value, String> {
 pub async fn download_frontend_update(url: String, expected_hash: String) -> Result<Value, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
-        .user_agent("ClawPanel")
+        .user_agent("ClawInstaller")
         .build()
         .map_err(|e| format!("HTTP 客户端错误: {e}"))?;
 

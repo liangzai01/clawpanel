@@ -80,7 +80,7 @@ export function diagnoseInstallError(errStr) {
   if (s.includes('eperm') || s.includes('operation not permitted')) {
     return {
       title: '安装失败 — 文件被占用或权限不足',
-      hint: '文件被其他进程锁定。请先关闭 ClawPanel 和所有 Node.js 进程，再以管理员身份打开 PowerShell 执行：',
+      hint: '文件被其他进程锁定。请先关闭 ClawInstaller 和所有 Node.js 进程，再以管理员身份打开 PowerShell 执行：',
       command: 'npm cache clean --force && ' + NPM_CMD,
     }
   }
