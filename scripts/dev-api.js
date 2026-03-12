@@ -1016,10 +1016,26 @@ const handlers = {
 
     let cliInstalled = false
     if (isMac) {
-      cliInstalled = fs.existsSync('/opt/homebrew/bin/openclaw') || fs.existsSync('/usr/local/bin/openclaw')
+      // 优先通过 which 查找（兼容 nvm/volta/fnm 等版本管理器安装的全局包）
+      try {
+        const bin = execSync('which openclaw 2>/dev/null', { stdio: 'pipe' }).toString().trim()
+        cliInstalled = bin.length > 0
+      } catch {}
+      // fallback：检查 Homebrew 常见路径
+      if (!cliInstalled) {
+        cliInstalled = fs.existsSync('/opt/homebrew/bin/openclaw') || fs.existsSync('/usr/local/bin/openclaw')
+      }
     } else if (isWindows) {
+      // 方式1：快速路径检查（默认 npm prefix）
       try { cliInstalled = fs.existsSync(path.join(process.env.APPDATA || '', 'npm', 'openclaw.cmd')) }
       catch { cliInstalled = false }
+      // 方式2：兼容 nvm-windows、自定义 prefix 等，实际执行命令
+      if (!cliInstalled) {
+        try {
+          execSync('openclaw --version', { stdio: 'pipe', shell: true, timeout: 5000 })
+          cliInstalled = true
+        } catch {}
+      }
     } else {
       cliInstalled = !!findOpenclawBin()
     }
