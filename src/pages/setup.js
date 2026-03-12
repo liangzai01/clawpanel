@@ -318,7 +318,7 @@ function renderNodeInstallTabs() {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
           <span style="font-size:var(--font-size-xs);color:var(--text-secondary);white-space:nowrap">根目录:</span>
           <input id="root-install-path" type="text"
-            value="${isWin ? 'C:\\openclaw' : '~/openclaw'}"
+            value="${isWin ? 'C:\\claw-tools' : '~/claw-tools'}"
             style="flex:1;padding:3px 8px;border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size:11px;font-family:monospace">
           <button class="btn btn-secondary btn-sm" id="btn-pick-root-dir" style="font-size:11px;padding:3px 8px;white-space:nowrap">浏览…</button>
         </div>
