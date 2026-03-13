@@ -334,7 +334,7 @@ function renderNodeInstallTabs() {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <button class="btn btn-primary btn-sm" id="btn-auto-install-node" disabled style="min-width:180px">
-            一键安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
+            安装 Node.js <span id="node-lts-ver" style="opacity:0.7">v22 LTS</span>
           </button>
         </div>
 
@@ -343,7 +343,7 @@ function renderNodeInstallTabs() {
         <div style="border-top:1px solid var(--border-primary);margin-top:12px;padding-top:12px">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
             <button class="btn btn-primary btn-sm" id="btn-auto-install-git" disabled style="min-width:180px">
-              一键安装 Git <span id="git-lts-ver" style="opacity:0.7">MinGit</span>
+              安装 Git <span id="git-lts-ver" style="opacity:0.7">MinGit</span>
             </button>
           </div>
           <div class="form-hint" style="line-height:1.5">MinGit 精简便携版，含 git 核心命令，约 40MB，不修改系统 PATH。</div>
@@ -481,7 +481,7 @@ function renderInstallSection() {
           </div>
         </details>
         <div style="margin-top:6px;opacity:0.7">
-          或者，你也可以在本机重新安装 OpenClaw（使用下方的「一键安装」）。
+          或者，你也可以在本机重新安装 OpenClaw（使用下方的「安装 OpenClaw」）。
         </div>
       </div>`
   }
@@ -514,7 +514,7 @@ function renderInstallSection() {
         <option value="https://repo.huaweicloud.com/repository/npm/">华为云镜像</option>
       </select>
     </div>
-    <button class="btn btn-primary btn-sm" id="btn-install">一键安装</button>
+    <button class="btn btn-primary btn-sm" id="btn-install">安装 OpenClaw</button>
     ${envHint}
   `
 }
